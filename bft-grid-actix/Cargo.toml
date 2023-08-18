@@ -1,0 +1,13 @@
+[package]
+name = "bft-grid-actix"
+version = "0.0.1"
+edition = "2021"
+authors = ["Fabio Tudone <fabtud@gmail.com>"]
+
+[dependencies]
+bft-grid-core = { path = "../bft-grid-core" }
+actix = "0.13"
+
+[[bin]]
+name = "bft-grid-actix"
+path = "src/bin.rs"

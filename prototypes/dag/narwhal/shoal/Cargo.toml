@@ -1,0 +1,8 @@
+[package]
+name = "shoal"
+version = "0.0.1"
+edition = "2021"
+authors = ["Fabio Tudone <fabtud@gmail.com>"]
+
+[dependencies]
+bft-grid-actix = { path = "../../../../bft-grid-actix" }
