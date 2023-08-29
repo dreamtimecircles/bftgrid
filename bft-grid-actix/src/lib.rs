@@ -7,7 +7,7 @@ use bft_grid_core::*;
 #[rtype(result = "()")]
 pub struct Msg<M: Unpin + 'static> (pub M);
 
-struct ActixModule<M, H>
+pub struct ActixModule<M, H, const ASYNC: bool>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
@@ -16,17 +16,7 @@ struct ActixModule<M, H>
     message_type: PhantomData<Msg<M>>,
 }
 
-pub struct AsyncActixModule<M: Unpin + 'static, H: MessageHandler<M> + Unpin + 'static>
-(
-    ActixModule<M, H>,
-);
-
-pub struct SyncActixModule<M: Unpin + 'static, H: MessageHandler<M> + Unpin + 'static>
-(
-    ActixModule<M, H>,
-);
-
-impl <M, H> Actor for AsyncActixModule<M, H>
+impl <M, H> Actor for ActixModule<M, H, true>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
@@ -34,7 +24,7 @@ impl <M, H> Actor for AsyncActixModule<M, H>
     type Context = Context<Self>;
 }
 
-impl <M, H> Actor for SyncActixModule<M, H>
+impl <M, H> Actor for ActixModule<M, H, false>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
@@ -42,119 +32,57 @@ impl <M, H> Actor for SyncActixModule<M, H>
     type Context = SyncContext<Self>;
 }
 
-impl <M, H> Handler<Msg<M>> for AsyncActixModule<M, H,>
+impl <M, H, const ASYNC: bool> Handler<Msg<M>> for ActixModule<M, H, ASYNC>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
+        Self: Actor,
 {
     type Result = ();
 
     fn handle(&mut self, msg: Msg<M>, _ctx: &mut Self::Context) -> Self::Result {
-        self.0.handler.receive(msg.0)
+        self.handler.receive(msg.0)
     }
 }
 
-impl <M, H> Handler<Msg<M>> for SyncActixModule<M, H,>
-    where
-        M: Unpin + 'static,
-        H: MessageHandler<M> + Unpin + 'static,
-{
-    type Result = ();
-
-    fn handle(&mut self, msg: Msg<M>, _ctx: &mut Self::Context) -> Self::Result {
-        receive(&mut self.0.handler, msg)
-    }
-}
-
-fn receive<M, H>(h: &mut H, msg: Msg<M>) -> ()
-    where
-        M: Unpin + 'static,
-        H: MessageHandler<M> + Unpin + 'static,
-{
-    h.receive(msg.0)
-}
-
-impl <M, H> AsyncActixModule<M, H>
+impl <M, H, const ASYNC: bool> ActixModule<M, H, ASYNC>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
 {
     pub fn new(h: H) -> Self {
-        AsyncActixModule(ActixModule { handler: h, message_type: PhantomData })
+        ActixModule{ handler: h, message_type: PhantomData }
     }
 }
 
-impl <M, H> SyncActixModule<M, H>
+pub struct ActixModuleRef<M, H, const ASYNC: bool>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
+        ActixModule<M, H, ASYNC>: Actor,
 {
-    pub fn new(h: H) -> Self {
-        SyncActixModule(ActixModule { handler: h, message_type: PhantomData })
-    }
+    addr: Addr<ActixModule<M, H, ASYNC>>
 }
 
-pub struct AsyncActixModuleRef<M, H>
-    where
-        M: Unpin + 'static,
-        H: MessageHandler<M> + Unpin + 'static,
-{
-    addr: Addr<AsyncActixModule<M, H>>
-}
-
-pub struct SyncActixModuleRef<M, H>
-    where
-        M: Unpin + 'static,
-        H: MessageHandler<M> + Unpin + 'static,
-{
-    addr: Addr<SyncActixModule<M, H>>
-}
-
-impl <M, H> ModuleRef<M> for AsyncActixModuleRef<M, H>
+impl <M, H, const ASYNC: bool> ModuleRef<M> for ActixModuleRef<M, H, ASYNC>
     where
         M: Unpin + Send,
         H: MessageHandler<M> + Unpin + 'static,
+        ActixModule<M, H, ASYNC>: Actor,
+        <ActixModule<M, H, ASYNC> as actix::Actor>::Context: ToEnvelope<ActixModule<M, H, ASYNC>, Msg<M>>,
 {
     fn async_send(&mut self, message: M) -> () {
-        send(&mut self.addr, message)
+        let _ = self.addr.send(Msg(message));
     }
 }
 
-impl <M, H> ModuleRef<M> for SyncActixModuleRef<M, H>
-    where
-        M: Unpin + Send,
-        H: MessageHandler<M> + Unpin + 'static,
-{
-    fn async_send(&mut self, message: M) -> () {
-        send(&mut self.addr, message)
-    }
-}
-
-fn send<A, M>(addr: &mut Addr<A>, message: M) -> ()
-    where
-        A: Actor + Handler<Msg<M>>,
-        <A as Actor>::Context: ToEnvelope<A, Msg<M>>,
-        M: Unpin + Send + 'static,
-{
-    let _ = addr.send(Msg(message));
-}
-
-impl <M, H> AsyncActixModuleRef<M, H>
+impl <M, H, const ASYNC: bool> ActixModuleRef<M, H, ASYNC>
     where
         M: Unpin + 'static,
         H: MessageHandler<M> + Unpin + 'static,
+        ActixModule<M, H, ASYNC>: Actor,
 {
-    pub fn new(addr: Addr<AsyncActixModule<M, H>>) -> Self {
-        AsyncActixModuleRef { addr }
-    }
-}
-
-impl <M, H> SyncActixModuleRef<M, H>
-    where
-        M: Unpin + 'static,
-        H: MessageHandler<M> + Unpin + 'static,
-{
-    pub fn new(addr: Addr<SyncActixModule<M, H>>) -> Self {
-        SyncActixModuleRef { addr }
+    pub fn new(addr: Addr<ActixModule<M, H, ASYNC>>) -> Self {
+        ActixModuleRef { addr }
     }
 }
