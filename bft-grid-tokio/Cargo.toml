@@ -1,15 +1,13 @@
 [package]
-name = "bft-grid-actix"
+name = "bft-grid-tokio"
 version = "0.0.1"
 edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
 bft-grid-core = { path = "../bft-grid-core" }
-anyhow = "1.0.72"
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-actix = "0.13"
 
 [[bin]]
-name = "bft-grid-actix"
+name = "bft-grid-tokio"
 path = "src/bin.rs"

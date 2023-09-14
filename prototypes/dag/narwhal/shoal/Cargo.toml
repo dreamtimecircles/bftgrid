@@ -5,4 +5,4 @@ edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
-bft-grid-actix = { path = "../../../../bft-grid-actix" }
+bft-grid-tokio = { path = "../../../../bft-grid-tokio" }
