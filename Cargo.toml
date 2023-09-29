@@ -1,2 +1,2 @@
 [workspace]
-members = ["bft-grid-tokio", "bft-grid-core", "prototypes/dag/narwhal/shoal"]
+members = ["bft-grid-core", "bft-grid-mt", "bft-grid-sim", "prototypes/dag/narwhal/shoal"]

@@ -1,8 +1,9 @@
 [package]
-name = "shoal"
+name = "bft-grid-sim"
 version = "0.0.1"
 edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
-bft-grid-mt = { path = "../../../../bft-grid-mt" }
+bft-grid-core = { path = "../bft-grid-core" }
+

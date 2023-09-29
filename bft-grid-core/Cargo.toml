@@ -3,5 +3,3 @@ name = "bft-grid-core"
 version = "0.0.1"
 edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
-
-[dependencies]
