@@ -1,6 +1,9 @@
-use std::{time::{Instant, Duration}, ops::Add, borrow::Cow};
+use std::{
+    ops::Add,
+    time::{Duration, Instant},
+};
 
-use bft_grid_core::{TypedMessageHandler, ActorSystem};
+use bft_grid_core::{ActorSystem, TypedMessageHandler};
 use bft_grid_sim::Simulation;
 
 struct TestHandler {}
@@ -17,8 +20,8 @@ fn main() {
     let start = Instant::now();
     let end = start.add(Duration::from_secs(60));
     let mut simulation = Simulation::new(start, end);
-    let handler1 = TestHandler{};
-    let handler2 = TestHandler{};
+    let handler1 = TestHandler {};
+    let handler2 = TestHandler {};
     let mut test1 = simulation.spawn_actor("test1".into(), handler1);
     let mut test2 = simulation.spawn_actor("test2".into(), handler2);
     test1.async_send(());

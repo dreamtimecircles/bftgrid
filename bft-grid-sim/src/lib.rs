@@ -1,8 +1,10 @@
 use std::{
     any::Any,
+    cell::RefCell,
     collections::{BinaryHeap, HashMap},
     marker::PhantomData,
-    time::Instant, rc::Rc, cell::RefCell,
+    rc::Rc,
+    time::Instant,
 };
 
 use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler, UntypedMessageHandler};
@@ -67,8 +69,14 @@ impl<'msg> Simulation<'static> {
     }
 
     pub fn run(mut self) {
+        self.events_queue.borrow_mut().push(EventAtInstant { target_actor_name: Rc::new("".to_string()), event: Box::new(()), instant: self.end_instant });
+
         while !self.events_queue.borrow().is_empty() {
             let e = self.events_queue.borrow_mut().pop().unwrap();
+
+            if let Some(_) = e.event.downcast_ref::<()>() {
+                return;
+            }
 
             match self.handlers.get_mut(&e.target_actor_name) {
                 Some(handler) => {
@@ -100,9 +108,7 @@ impl<M: 'static> ActorRef<M> for SimulationActor<M> {
     }
 }
 
-impl ActorSystem
-    for Simulation<'static>
-{
+impl ActorSystem for Simulation<'static> {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
@@ -112,7 +118,8 @@ impl ActorSystem
         handler: MH,
     ) -> Box<dyn ActorRef<Msg>> {
         let shared_actor_name = Rc::new(name);
-        self.handlers.insert(shared_actor_name.clone(), Box::new(handler));
+        self.handlers
+            .insert(shared_actor_name.clone(), Box::new(handler));
         Box::new(SimulationActor {
             actor_name: shared_actor_name,
             events_queue: self.events_queue.clone(),

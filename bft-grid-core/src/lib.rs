@@ -1,4 +1,4 @@
-use std::{any::Any, borrow::Cow};
+use std::any::Any;
 
 pub trait TypedMessageHandler<'msg> {
     type Msg: 'msg;
