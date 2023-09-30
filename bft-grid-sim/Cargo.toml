@@ -7,3 +7,6 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 [dependencies]
 bft-grid-core = { path = "../bft-grid-core" }
 
+[[bin]]
+name = "bft-grid-sim"
+path = "src/bin.rs"

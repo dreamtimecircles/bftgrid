@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use bft_grid_core::{ActorSystem, TypedMessageHandler};
 use bft_grid_mt::{ThreadActorSystem, TokioActorSystem};
 
@@ -14,9 +16,9 @@ impl TypedMessageHandler<'_> for TestHandler {
 #[tokio::main]
 async fn main() {
     let mut tokio_actor_system = TokioActorSystem {};
-    let mut async_actor_ref = tokio_actor_system.spawn_actor("test1", TestHandler {});
+    let mut async_actor_ref = tokio_actor_system.spawn_actor(Cow::Borrowed("test1"), TestHandler {});
     async_actor_ref.async_send(());
     let mut thread_actor_system = ThreadActorSystem {};
-    let mut sync_actor_ref = thread_actor_system.spawn_actor("test2", TestHandler {});
+    let mut sync_actor_ref = thread_actor_system.spawn_actor(Cow::Borrowed("test2"), TestHandler {});
     sync_actor_ref.async_send(());
 }

@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler};
+use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler, ActorName};
 use tokio::sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender};
 
 struct TokioActor<M> {
@@ -21,15 +21,15 @@ impl<M> ActorRef<M> for TokioActor<M> {
 
 pub struct TokioActorSystem {}
 
-impl<'this, 'actor_name> ActorSystem<'this, 'actor_name> for TokioActorSystem {
+impl ActorSystem for TokioActorSystem {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
-        &'this mut self,
-        _name: &'actor_name str,
+        &mut self,
+        _name: ActorName,
         mut handler: MH,
-    ) -> Box<dyn ActorRef<Msg> + 'this> {
+    ) -> Box<dyn ActorRef<Msg>> {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         tokio::spawn(async move {
             loop {
@@ -62,15 +62,15 @@ impl<M> ActorRef<M> for ThreadActor<M> {
 
 pub struct ThreadActorSystem {}
 
-impl<'this, 'actor_name> ActorSystem<'this, 'actor_name> for ThreadActorSystem {
+impl ActorSystem for ThreadActorSystem {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
-        &'this mut self,
-        _name: &'actor_name str,
+        &mut self,
+        _name: ActorName,
         mut handler: MH,
-    ) -> Box<dyn ActorRef<Msg> + 'this> {
+    ) -> Box<dyn ActorRef<Msg>> {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || loop {
             match rx.recv() {

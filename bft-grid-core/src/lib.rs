@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::{any::Any, borrow::Cow};
 
 pub trait TypedMessageHandler<'msg> {
     type Msg: 'msg;
@@ -26,13 +26,15 @@ pub trait ActorRef<Msg> {
     fn async_send(&mut self, message: Msg) -> ();
 }
 
-pub trait ActorSystem<'this, 'actor_name> {
+pub type ActorName = Cow<'static, str>;
+
+pub trait ActorSystem {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
-        &'this mut self,
-        name: &'actor_name str,
+        &mut self,
+        name: ActorName,
         handler: MH,
-    ) -> Box<dyn ActorRef<Msg> + 'this>;
+    ) -> Box<dyn ActorRef<Msg>>;
 }
