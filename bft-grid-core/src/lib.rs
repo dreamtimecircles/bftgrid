@@ -26,15 +26,13 @@ pub trait ActorRef<Msg> {
     fn async_send(&mut self, message: Msg) -> ();
 }
 
-pub type ActorName = Cow<'static, str>;
-
 pub trait ActorSystem {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
-        name: ActorName,
+        name: String,
         handler: MH,
     ) -> Box<dyn ActorRef<Msg>>;
 }

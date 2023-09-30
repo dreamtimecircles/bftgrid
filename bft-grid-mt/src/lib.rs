@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler, ActorName};
+use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler};
 use tokio::sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender};
 
 struct TokioActor<M> {
@@ -27,7 +27,7 @@ impl ActorSystem for TokioActorSystem {
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
-        _name: ActorName,
+        _name: String,
         mut handler: MH,
     ) -> Box<dyn ActorRef<Msg>> {
         let (tx, mut rx) = tmpsc::unbounded_channel();
@@ -68,7 +68,7 @@ impl ActorSystem for ThreadActorSystem {
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
-        _name: ActorName,
+        _name: String,
         mut handler: MH,
     ) -> Box<dyn ActorRef<Msg>> {
         let (tx, rx) = mpsc::channel();

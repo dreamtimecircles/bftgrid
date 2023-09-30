@@ -5,7 +5,7 @@ use std::{
     time::Instant, rc::Rc, cell::RefCell,
 };
 
-use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler, UntypedMessageHandler, ActorName};
+use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler, UntypedMessageHandler};
 
 pub struct SimulationClock {
     current_instant: Instant,
@@ -18,7 +18,7 @@ impl SimulationClock {
 }
 
 struct EventAtInstant {
-    target_actor_name: ActorName,
+    target_actor_name: Rc<String>,
     event: Box<dyn Any>,
     instant: Instant,
 }
@@ -51,7 +51,7 @@ pub struct Simulation<'msg> {
     events_queue: Rc<RefCell<BinaryHeap<EventAtInstant>>>,
     clock: Rc<RefCell<SimulationClock>>,
     end_instant: Instant,
-    handlers: HashMap<ActorName, Box<dyn UntypedMessageHandler<'msg>>>,
+    handlers: HashMap<Rc<String>, Box<dyn UntypedMessageHandler<'msg>>>,
 }
 
 impl<'msg> Simulation<'static> {
@@ -84,7 +84,7 @@ impl<'msg> Simulation<'static> {
 }
 
 pub struct SimulationActor<M> {
-    actor_name: ActorName,
+    actor_name: Rc<String>,
     events_queue: Rc<RefCell<BinaryHeap<EventAtInstant>>>,
     clock: Rc<RefCell<SimulationClock>>,
     message_type: PhantomData<M>,
@@ -93,33 +93,30 @@ pub struct SimulationActor<M> {
 impl<M: 'static> ActorRef<M> for SimulationActor<M> {
     fn async_send(&mut self, message: M) -> () {
         self.events_queue.borrow_mut().push(EventAtInstant {
-            target_actor_name: self.actor_name.to_owned(),
+            target_actor_name: self.actor_name.clone(),
             event: Box::new(message),
             instant: self.clock.borrow().now(),
         });
     }
 }
 
-pub struct SimulationActorSystem<'simulation, 'msg> {
-    pub simulation: &'simulation mut Simulation<'msg>,
-}
-
-impl <'simulation> ActorSystem
-    for SimulationActorSystem<'simulation, 'static>
+impl ActorSystem
+    for Simulation<'static>
 {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
-        name: ActorName,
+        name: String,
         handler: MH,
     ) -> Box<dyn ActorRef<Msg>> {
-        self.simulation.handlers.insert(name.to_owned(), Box::new(handler));
+        let shared_actor_name = Rc::new(name);
+        self.handlers.insert(shared_actor_name.clone(), Box::new(handler));
         Box::new(SimulationActor {
-            actor_name: name,
-            events_queue: self.simulation.events_queue.clone(),
-            clock: self.simulation.clock.clone(),
+            actor_name: shared_actor_name,
+            events_queue: self.events_queue.clone(),
+            clock: self.clock.clone(),
             message_type: PhantomData {},
         })
     }
