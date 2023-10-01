@@ -10,13 +10,7 @@ use std::{
 use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler, UntypedMessageHandler};
 
 pub struct SimulationClock {
-    current_instant: Instant,
-}
-
-impl SimulationClock {
-    fn now(&self) -> Instant {
-        self.current_instant
-    }
+    pub current_instant: Instant,
 }
 
 struct EventAtInstant {
@@ -77,6 +71,7 @@ impl<'msg> Simulation<'static> {
 
         while !self.events_queue.borrow().is_empty() {
             let e = self.events_queue.borrow_mut().pop().unwrap();
+            self.clock.borrow_mut().current_instant = e.instant;
 
             if e.event.downcast_ref::<()>().is_some() {
                 return;
@@ -107,7 +102,7 @@ impl<M: 'static> ActorRef<M> for SimulationActor<M> {
         self.events_queue.borrow_mut().push(EventAtInstant {
             target_actor_name: self.actor_name.clone(),
             event: Box::new(message),
-            instant: self.clock.borrow().now(),
+            instant: self.clock.borrow().current_instant,
         });
     }
 }

@@ -11,7 +11,7 @@ struct TestHandler {}
 impl TypedMessageHandler<'_> for TestHandler {
     type Msg = ();
 
-    fn receive(&mut self, _: ()) -> () {
+    fn receive(&mut self, _: ()) {
         println!("Received")
     }
 }
