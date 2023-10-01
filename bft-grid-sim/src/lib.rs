@@ -69,12 +69,16 @@ impl<'msg> Simulation<'static> {
     }
 
     pub fn run(mut self) {
-        self.events_queue.borrow_mut().push(EventAtInstant { target_actor_name: Rc::new("".to_string()), event: Box::new(()), instant: self.end_instant });
+        self.events_queue.borrow_mut().push(EventAtInstant {
+            target_actor_name: Rc::new("".to_string()),
+            event: Box::new(()),
+            instant: self.end_instant,
+        });
 
         while !self.events_queue.borrow().is_empty() {
             let e = self.events_queue.borrow_mut().pop().unwrap();
 
-            if let Some(_) = e.event.downcast_ref::<()>() {
+            if e.event.downcast_ref::<()>().is_some() {
                 return;
             }
 
@@ -99,7 +103,7 @@ pub struct SimulationActor<M> {
 }
 
 impl<M: 'static> ActorRef<M> for SimulationActor<M> {
-    fn async_send(&mut self, message: M) -> () {
+    fn async_send(&self, message: M) {
         self.events_queue.borrow_mut().push(EventAtInstant {
             target_actor_name: self.actor_name.clone(),
             event: Box::new(message),

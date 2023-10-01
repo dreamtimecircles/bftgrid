@@ -22,8 +22,8 @@ fn main() {
     let mut simulation = Simulation::new(start, end);
     let handler1 = TestHandler {};
     let handler2 = TestHandler {};
-    let mut test1 = simulation.spawn_actor("test1".into(), handler1);
-    let mut test2 = simulation.spawn_actor("test2".into(), handler2);
+    let test1 = simulation.spawn_actor("test1".into(), handler1);
+    let test2 = simulation.spawn_actor("test2".into(), handler2);
     test1.async_send(());
     test2.async_send(());
     simulation.run();

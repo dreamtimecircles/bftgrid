@@ -3,7 +3,7 @@ use std::any::Any;
 pub trait TypedMessageHandler<'msg> {
     type Msg: 'msg;
 
-    fn receive(&mut self, message: Self::Msg) -> ();
+    fn receive(&mut self, message: Self::Msg);
 }
 
 pub trait UntypedMessageHandler<'msg> {
@@ -23,7 +23,7 @@ impl<'msg, Msg: 'msg, X: TypedMessageHandler<'msg, Msg = Msg>> UntypedMessageHan
 }
 
 pub trait ActorRef<Msg> {
-    fn async_send(&mut self, message: Msg) -> ();
+    fn async_send(&self, message: Msg);
 }
 
 pub trait ActorSystem {
