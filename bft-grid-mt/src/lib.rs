@@ -12,7 +12,7 @@ struct TokioActor<M> {
 }
 
 impl<M> ActorRef<M> for TokioActor<M> {
-    fn async_send(&self, message: M) -> () {
+    fn async_send(&self, message: M) {
         self.tx
             .send(message)
             .expect("Bug: the actor closed the receive side!");
@@ -53,7 +53,7 @@ struct ThreadActor<M> {
 }
 
 impl<M> ActorRef<M> for ThreadActor<M> {
-    fn async_send(&self, message: M) -> () {
+    fn async_send(&self, message: M) {
         self.tx
             .send(message)
             .expect("Bug: the actor closed the receive side!");

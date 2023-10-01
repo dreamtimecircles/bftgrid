@@ -43,15 +43,15 @@ impl Ord for EventAtInstant {
     }
 }
 
-pub struct Simulation<'msg> {
+pub struct Simulation {
     events_queue: Rc<RefCell<BinaryHeap<EventAtInstant>>>,
     clock: Rc<RefCell<SimulationClock>>,
     end_instant: Instant,
-    handlers: HashMap<Rc<String>, Box<dyn UntypedMessageHandler<'msg>>>,
+    handlers: HashMap<Rc<String>, Box<dyn UntypedMessageHandler<'static>>>,
 }
 
-impl<'msg> Simulation<'static> {
-    pub fn new(start_instant: Instant, end_instant: Instant) -> Simulation<'static> {
+impl Simulation {
+    pub fn new(start_instant: Instant, end_instant: Instant) -> Simulation {
         Simulation {
             events_queue: Rc::new(RefCell::new(BinaryHeap::new())),
             clock: Rc::new(RefCell::new(SimulationClock {
@@ -79,10 +79,7 @@ impl<'msg> Simulation<'static> {
 
             match self.handlers.get_mut(&e.target_actor_name) {
                 Some(handler) => {
-                    match handler.receive_untyped(e.event) {
-                        Ok(_) => (),
-                        Err(_) => (), // TODO log
-                    }
+                    handler.receive_untyped(e.event).expect("Found event targeting the wrong actor");
                 }
                 None => todo!(),
             }
@@ -107,7 +104,7 @@ impl<M: 'static> ActorRef<M> for SimulationActor<M> {
     }
 }
 
-impl ActorSystem for Simulation<'static> {
+impl ActorSystem for Simulation {
     fn spawn_actor<
         Msg: 'static + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
@@ -118,7 +115,7 @@ impl ActorSystem for Simulation<'static> {
     ) -> Box<dyn ActorRef<Msg>> {
         let shared_actor_name = Rc::new(name);
         self.handlers
-            .insert(shared_actor_name.clone(), Box::new(handler));
+            .insert(shared_actor_name.clone(), Box::new(handler)).expect("An actor with such a name already exist");
         Box::new(SimulationActor {
             actor_name: shared_actor_name,
             events_queue: self.events_queue.clone(),
