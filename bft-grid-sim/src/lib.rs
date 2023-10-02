@@ -29,17 +29,13 @@ impl Eq for EventAtInstant {}
 
 impl PartialOrd for EventAtInstant {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.instant.partial_cmp(&other.instant) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self.instant.partial_cmp(&other.instant)
+        other.instant.partial_cmp(&self.instant) // Reverse order: earlier is bigger
     }
 }
 
 impl Ord for EventAtInstant {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.instant.cmp(&other.instant)
+        other.instant.cmp(&self.instant) // Reverse order: earlier is bigger
     }
 }
 
@@ -49,6 +45,8 @@ pub struct Simulation {
     end_instant: Instant,
     handlers: HashMap<Rc<String>, Box<dyn UntypedMessageHandler<'static>>>,
 }
+
+struct SimulationEnd();
 
 impl Simulation {
     pub fn new(start_instant: Instant, end_instant: Instant) -> Simulation {
@@ -65,7 +63,7 @@ impl Simulation {
     pub fn run(mut self) {
         self.events_queue.borrow_mut().push(EventAtInstant {
             target_actor_name: Rc::new("".to_string()),
-            event: Box::new(()),
+            event: Box::new(SimulationEnd()),
             instant: self.end_instant,
         });
 
@@ -73,13 +71,15 @@ impl Simulation {
             let e = self.events_queue.borrow_mut().pop().unwrap();
             self.clock.borrow_mut().current_instant = e.instant;
 
-            if e.event.downcast_ref::<()>().is_some() {
+            if e.event.downcast_ref::<SimulationEnd>().is_some() {
                 return;
             }
 
             match self.handlers.get_mut(&e.target_actor_name) {
                 Some(handler) => {
-                    handler.receive_untyped(e.event).expect("Found event targeting the wrong actor");
+                    handler
+                        .receive_untyped(e.event)
+                        .expect("Found event targeting the wrong actor");
                 }
                 None => todo!(),
             }
@@ -114,8 +114,13 @@ impl ActorSystem for Simulation {
         handler: MH,
     ) -> Box<dyn ActorRef<Msg>> {
         let shared_actor_name = Rc::new(name);
-        self.handlers
-            .insert(shared_actor_name.clone(), Box::new(handler)).expect("An actor with such a name already exist");
+        if !self
+            .handlers
+            .insert(shared_actor_name.clone(), Box::new(handler))
+            .is_none()
+        {
+            panic!("An actor with such a name already exist");
+        }
         Box::new(SimulationActor {
             actor_name: shared_actor_name,
             events_queue: self.events_queue.clone(),
