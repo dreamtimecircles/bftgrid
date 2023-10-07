@@ -7,11 +7,11 @@ use std::{
 use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler};
 use tokio::sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender};
 
-struct TokioActor<M> {
+struct TokioActor<M: Send> {
     tx: TUnboundedSender<M>,
 }
 
-impl<M> ActorRef<M> for TokioActor<M> {
+impl<M: Send> ActorRef<M> for TokioActor<M> {
     fn async_send(&self, message: M) {
         self.tx
             .send(message)
@@ -48,11 +48,11 @@ impl ActorSystem for TokioActorSystem {
     }
 }
 
-struct ThreadActor<M> {
+struct ThreadActor<M: Send> {
     tx: Sender<M>,
 }
 
-impl<M> ActorRef<M> for ThreadActor<M> {
+impl<M: Send> ActorRef<M> for ThreadActor<M> {
     fn async_send(&self, message: M) {
         self.tx
             .send(message)

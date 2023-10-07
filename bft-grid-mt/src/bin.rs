@@ -6,7 +6,7 @@ use bft_grid_mt::{ThreadActorSystem, TokioActorSystem};
 struct Actor1ToActor2();
 
 struct Actor1 {
-    actor2_ref: Box<dyn ActorRef<Actor1ToActor2> + Send>,
+    actor2_ref: Box<dyn ActorRef<Actor1ToActor2>>,
 }
 
 struct Actor2 {}

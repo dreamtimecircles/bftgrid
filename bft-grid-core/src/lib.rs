@@ -38,7 +38,7 @@ impl<'msg, Msg: 'msg, X: TypedMessageHandler<'msg, Msg = Msg>> UntypedMessageHan
     }
 }
 
-pub trait ActorRef<Msg> {
+pub trait ActorRef<Msg>: Send {
     fn async_send(&self, message: Msg);
 }
 
