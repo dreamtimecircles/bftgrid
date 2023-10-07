@@ -44,11 +44,11 @@ pub trait ActorRef<Msg> {
 
 pub trait ActorSystem {
     fn spawn_actor<
-        Msg: 'static + Send,
+        Msg: 'static + Sync + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
         name: String,
         handler: MH,
-    ) -> Box<dyn ActorRef<Msg>>;
+    ) -> Box<dyn ActorRef<Msg> + Send>;
 }

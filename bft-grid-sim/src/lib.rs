@@ -1,9 +1,9 @@
 use std::{
     any::Any,
-    cell::RefCell,
     collections::{BinaryHeap, HashMap},
     marker::PhantomData,
-    rc::Rc,
+    sync::Arc,
+    sync::RwLock,
     time::Instant,
 };
 
@@ -14,8 +14,8 @@ pub struct SimulationClock {
 }
 
 struct EventAtInstant {
-    target_actor_name: Rc<String>,
-    event: Box<dyn Any>,
+    target_actor_name: Arc<String>,
+    event: Box<dyn Any + Send + Sync>,
     instant: Instant,
 }
 
@@ -40,10 +40,10 @@ impl Ord for EventAtInstant {
 }
 
 pub struct Simulation {
-    events_queue: Rc<RefCell<BinaryHeap<EventAtInstant>>>,
-    clock: Rc<RefCell<SimulationClock>>,
+    events_queue: Arc<RwLock<BinaryHeap<EventAtInstant>>>,
+    clock: Arc<RwLock<SimulationClock>>,
     end_instant: Instant,
-    handlers: HashMap<Rc<String>, Box<dyn UntypedMessageHandler<'static>>>,
+    handlers: HashMap<Arc<String>, Box<dyn UntypedMessageHandler<'static>>>,
 }
 
 struct SimulationEnd();
@@ -51,8 +51,8 @@ struct SimulationEnd();
 impl Simulation {
     pub fn new(start_instant: Instant, end_instant: Instant) -> Simulation {
         Simulation {
-            events_queue: Rc::new(RefCell::new(BinaryHeap::new())),
-            clock: Rc::new(RefCell::new(SimulationClock {
+            events_queue: Arc::new(RwLock::new(BinaryHeap::new())),
+            clock: Arc::new(RwLock::new(SimulationClock {
                 current_instant: start_instant,
             })),
             end_instant,
@@ -61,15 +61,15 @@ impl Simulation {
     }
 
     pub fn run(mut self) {
-        self.events_queue.borrow_mut().push(EventAtInstant {
-            target_actor_name: Rc::new("".to_string()),
+        self.events_queue.write().unwrap().push(EventAtInstant {
+            target_actor_name: Arc::new("".to_string()),
             event: Box::new(SimulationEnd()),
             instant: self.end_instant,
         });
 
-        while !self.events_queue.borrow().is_empty() {
-            let e = self.events_queue.borrow_mut().pop().unwrap();
-            self.clock.borrow_mut().current_instant = e.instant;
+        while !self.events_queue.read().unwrap().is_empty() {
+            let e = self.events_queue.write().unwrap().pop().unwrap();
+            self.clock.write().unwrap().current_instant = e.instant;
 
             if e.event.downcast_ref::<SimulationEnd>().is_some() {
                 return;
@@ -88,32 +88,32 @@ impl Simulation {
 }
 
 pub struct SimulationActor<M> {
-    actor_name: Rc<String>,
-    events_queue: Rc<RefCell<BinaryHeap<EventAtInstant>>>,
-    clock: Rc<RefCell<SimulationClock>>,
+    actor_name: Arc<String>,
+    events_queue: Arc<RwLock<BinaryHeap<EventAtInstant>>>,
+    clock: Arc<RwLock<SimulationClock>>,
     message_type: PhantomData<M>,
 }
 
-impl<M: 'static> ActorRef<M> for SimulationActor<M> {
+impl<M: 'static + Sync + Send> ActorRef<M> for SimulationActor<M> {
     fn async_send(&self, message: M) {
-        self.events_queue.borrow_mut().push(EventAtInstant {
+        self.events_queue.write().unwrap().push(EventAtInstant {
             target_actor_name: self.actor_name.clone(),
             event: Box::new(message),
-            instant: self.clock.borrow().current_instant,
+            instant: self.clock.read().unwrap().current_instant,
         });
     }
 }
 
 impl ActorSystem for Simulation {
     fn spawn_actor<
-        Msg: 'static + Send,
+        Msg: 'static + Sync + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
         name: String,
         handler: MH,
-    ) -> Box<dyn ActorRef<Msg>> {
-        let shared_actor_name = Rc::new(name);
+    ) -> Box<dyn ActorRef<Msg> + Send> {
+        let shared_actor_name = Arc::new(name);
         if !self
             .handlers
             .insert(shared_actor_name.clone(), Box::new(handler))

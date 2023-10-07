@@ -29,7 +29,7 @@ impl ActorSystem for TokioActorSystem {
         &mut self,
         _name: String,
         mut handler: MH,
-    ) -> Box<dyn ActorRef<Msg>> {
+    ) -> Box<dyn ActorRef<Msg> + Send> {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         tokio::spawn(async move {
             loop {
@@ -64,13 +64,13 @@ pub struct ThreadActorSystem {}
 
 impl ActorSystem for ThreadActorSystem {
     fn spawn_actor<
-        Msg: 'static + Send,
+        Msg: 'static + Sync + Send,
         MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     >(
         &mut self,
         _name: String,
         mut handler: MH,
-    ) -> Box<dyn ActorRef<Msg>> {
+    ) -> Box<dyn ActorRef<Msg> + Send> {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || loop {
             match rx.recv() {
