@@ -112,7 +112,7 @@ impl ActorSystem for Simulation {
         &mut self,
         name: String,
         handler: MH,
-    ) -> Box<dyn ActorRef<Msg> + Send> {
+    ) -> Box<dyn ActorRef<Msg>> {
         let shared_actor_name = Arc::new(name);
         if !self
             .handlers

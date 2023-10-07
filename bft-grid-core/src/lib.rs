@@ -50,5 +50,5 @@ pub trait ActorSystem {
         &mut self,
         name: String,
         handler: MH,
-    ) -> Box<dyn ActorRef<Msg> + Send>;
+    ) -> Box<dyn ActorRef<Msg>>;
 }
