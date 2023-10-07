@@ -38,8 +38,18 @@ impl<'msg, Msg: 'msg, X: TypedMessageHandler<'msg, Msg = Msg>> UntypedMessageHan
     }
 }
 
-pub trait ActorRef<Msg>: Send {
+pub trait SingleThreadedActorRef<Msg> {
     fn async_send(&self, message: Msg);
+}
+
+pub trait ActorRef<Msg>: SingleThreadedActorRef<Msg> + Send {}
+
+pub trait SingleThreadedActorSystem {
+    fn spawn_actor<Msg: 'static, MH: 'static + TypedMessageHandler<'static, Msg = Msg>>(
+        &mut self,
+        name: String,
+        handler: MH,
+    ) -> Box<dyn SingleThreadedActorRef<Msg>>;
 }
 
 pub trait ActorSystem {

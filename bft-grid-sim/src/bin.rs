@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bft_grid_core::{ActorSystem, TypedMessageHandler};
+use bft_grid_core::{SingleThreadedActorSystem, TypedMessageHandler};
 use bft_grid_sim::Simulation;
 
 struct TestHandler {}

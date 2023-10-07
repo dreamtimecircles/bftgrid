@@ -4,20 +4,22 @@ use std::{
     thread,
 };
 
-use bft_grid_core::{ActorRef, ActorSystem, TypedMessageHandler};
+use bft_grid_core::{ActorRef, ActorSystem, SingleThreadedActorRef, TypedMessageHandler};
 use tokio::sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender};
 
 struct TokioActor<M: Send> {
     tx: TUnboundedSender<M>,
 }
 
-impl<M: Send> ActorRef<M> for TokioActor<M> {
+impl<M: Send> SingleThreadedActorRef<M> for TokioActor<M> {
     fn async_send(&self, message: M) {
         self.tx
             .send(message)
             .expect("Bug: the actor closed the receive side!");
     }
 }
+
+impl<M: Send> ActorRef<M> for TokioActor<M> {}
 
 pub struct TokioActorSystem {}
 
@@ -52,13 +54,15 @@ struct ThreadActor<M: Send> {
     tx: Sender<M>,
 }
 
-impl<M: Send> ActorRef<M> for ThreadActor<M> {
+impl<M: Send> SingleThreadedActorRef<M> for ThreadActor<M> {
     fn async_send(&self, message: M) {
         self.tx
             .send(message)
             .expect("Bug: the actor closed the receive side!");
     }
 }
+
+impl<M: Send> ActorRef<M> for ThreadActor<M> {}
 
 pub struct ThreadActorSystem {}
 
