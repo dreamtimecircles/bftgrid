@@ -96,7 +96,10 @@ pub struct SimulationActor<M> {
     message_type: PhantomData<M>,
 }
 
-impl<M: 'static> SingleThreadedActorRef<M> for SimulationActor<M> {
+impl<M> SingleThreadedActorRef<M> for SimulationActor<M>
+where
+    M: 'static,
+{
     fn async_send(&self, message: M) {
         self.events_queue.borrow_mut().push(EventAtInstant {
             target_actor_name: self.actor_name.clone(),
@@ -107,11 +110,15 @@ impl<M: 'static> SingleThreadedActorRef<M> for SimulationActor<M> {
 }
 
 impl SingleThreadedActorSystem for Simulation {
-    fn spawn_actor<Msg: 'static, MH: 'static + TypedMessageHandler<'static, Msg = Msg>>(
+    fn spawn_actor<Msg, MH>(
         &mut self,
         name: String,
         handler: MH,
-    ) -> Box<dyn SingleThreadedActorRef<Msg>> {
+    ) -> Box<dyn SingleThreadedActorRef<Msg>>
+    where
+        Msg: 'static,
+        MH: 'static + TypedMessageHandler<'static, Msg = Msg>,
+    {
         let shared_actor_name = Rc::new(name);
         if !self
             .handlers

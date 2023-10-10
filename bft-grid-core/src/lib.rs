@@ -26,7 +26,11 @@ pub trait UntypedMessageHandler<'msg> {
     fn receive_untyped(&mut self, message: Box<dyn Any + 'msg>) -> Result<(), MessageNotSupported>;
 }
 
-impl<'msg, Msg: 'msg, X: TypedMessageHandler<'msg, Msg = Msg>> UntypedMessageHandler<'msg> for X {
+impl<'msg, Msg, X> UntypedMessageHandler<'msg> for X
+where
+    Msg: 'msg,
+    X: TypedMessageHandler<'msg, Msg = Msg>,
+{
     fn receive_untyped(&mut self, message: Box<dyn Any + 'msg>) -> Result<(), MessageNotSupported> {
         match message.downcast::<X::Msg>() {
             Ok(typed_message) => {
@@ -45,20 +49,23 @@ pub trait SingleThreadedActorRef<Msg> {
 pub trait ActorRef<Msg>: SingleThreadedActorRef<Msg> + Send {}
 
 pub trait SingleThreadedActorSystem {
-    fn spawn_actor<Msg: 'static, MH: 'static + TypedMessageHandler<'static, Msg = Msg>>(
+    fn spawn_actor<Msg, MessageHandler>(
         &mut self,
         name: String,
-        handler: MH,
-    ) -> Box<dyn SingleThreadedActorRef<Msg>>;
+        handler: MessageHandler,
+    ) -> Box<dyn SingleThreadedActorRef<Msg>>
+    where
+        Msg: 'static,
+        MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg>;
 }
 
 pub trait ActorSystem {
-    fn spawn_actor<
-        Msg: 'static + Sync + Send,
-        MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
-    >(
+    fn spawn_actor<Msg, MessageHandler>(
         &mut self,
         name: String,
-        handler: MH,
-    ) -> Box<dyn ActorRef<Msg>>;
+        handler: MessageHandler,
+    ) -> Box<dyn ActorRef<Msg>>
+    where
+        Msg: 'static + Send,
+        MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg> + Send;
 }
