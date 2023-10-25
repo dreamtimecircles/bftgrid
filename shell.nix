@@ -15,6 +15,7 @@ mkShell {
     git
     python310Packages.mdformat
     cargo
+    clippy
     rustc
     zlib
     zip
