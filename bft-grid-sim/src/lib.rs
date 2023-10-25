@@ -5,7 +5,7 @@ use std::{
     marker::PhantomData,
     ops::Add,
     rc::Rc,
-    time::{Duration, Instant}, hash::Hash,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;

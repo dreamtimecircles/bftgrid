@@ -23,10 +23,7 @@ fn main() {
     let mut topology = HashMap::<String, Node>::new();
     topology.insert(
         "node".into(),
-        Node::new(
-            Box::new(TestHandler {}),
-            Box::new(TestHandler {}),
-        ),
+        Node::new(Box::new(TestHandler {}), Box::new(TestHandler {})),
     );
     let mut simulation = Simulation::new(topology, start, end);
     let handler1 = TestHandler {};
