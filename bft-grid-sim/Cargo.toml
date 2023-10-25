@@ -6,6 +6,8 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
 bft-grid-core = { path = "../bft-grid-core" }
+async-trait = "0.1.74"
+rand_chacha = "0.3.1"
 
 [[bin]]
 name = "bft-grid-sim"

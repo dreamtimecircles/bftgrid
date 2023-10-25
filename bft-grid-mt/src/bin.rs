@@ -14,7 +14,7 @@ struct Actor2 {}
 impl TypedMessageHandler<'_> for Actor2 {
     type Msg = Actor1ToActor2;
 
-    fn receive(&mut self, _msg: Actor1ToActor2) -> () {
+    fn receive(&mut self, _msg: Actor1ToActor2) {
         println!("Received")
     }
 }
@@ -22,22 +22,22 @@ impl TypedMessageHandler<'_> for Actor2 {
 impl TypedMessageHandler<'_> for Actor1 {
     type Msg = ();
 
-    fn receive(&mut self, _msg: ()) -> () {
-        self.actor2_ref.async_send(Actor1ToActor2())
+    fn receive(&mut self, _msg: ()) {
+        self.actor2_ref.send(Actor1ToActor2(), None);
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let mut tokio_actor_system = TokioActorSystem {};
-    let async_actor_ref = tokio_actor_system.spawn_actor("test1".into(), Actor2 {});
+fn main() {
+    let mut tokio_actor_system = TokioActorSystem::new();
+    let async_actor_ref = tokio_actor_system.spawn_actor("node".into(), "test1".into(), Actor2 {});
     let mut thread_actor_system = ThreadActorSystem {};
-    let sync_actor_ref = thread_actor_system.spawn_actor(
-        "test1".into(),
+    let mut sync_actor_ref = thread_actor_system.spawn_actor(
+        "node".into(),
+        "test2".into(),
         Actor1 {
             actor2_ref: async_actor_ref,
         },
     );
-    sync_actor_ref.async_send(());
+    sync_actor_ref.send((), None);
     thread::sleep(Duration::from_secs(1));
 }

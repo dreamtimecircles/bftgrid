@@ -1,38 +1,71 @@
 use std::{
     sync::mpsc,
-    sync::mpsc::{RecvError, Sender},
+    sync::{
+        mpsc::{RecvError, Sender},
+        Arc,
+    },
     thread,
+    time::Duration,
 };
 
+use async_trait::async_trait;
 use bft_grid_core::{ActorRef, ActorSystem, SingleThreadedActorRef, TypedMessageHandler};
-use tokio::sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender};
+use tokio::{
+    runtime::Runtime,
+    sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
+};
 
 struct TokioActor<M>
 where
     M: Send,
 {
+    runtime: Arc<Runtime>,
     tx: TUnboundedSender<M>,
 }
 
-impl<M> SingleThreadedActorRef<M> for TokioActor<M>
+#[async_trait]
+impl<Msg> SingleThreadedActorRef<Msg> for TokioActor<Msg>
 where
-    M: Send,
+    Msg: Send + 'static,
 {
-    fn async_send(&self, message: M) {
-        self.tx
-            .send(message)
-            .expect("Bug: the actor closed the receive side!");
+    fn send(&mut self, message: Msg, delay: Option<Duration>) {
+        let sender = self.tx.clone();
+        self.runtime.spawn(async move {
+            if let Some(delay_duration) = delay {
+                tokio::time::sleep(delay_duration).await;
+            }
+            sender
+                .send(message)
+                .expect("Bug: the actor closed the receive side!");
+        });
     }
 }
 
-impl<M> ActorRef<M> for TokioActor<M> where M: Send {}
+impl<Msg> ActorRef<Msg> for TokioActor<Msg> where Msg: Send + 'static {}
 
-pub struct TokioActorSystem {}
+pub struct TokioActorSystem {
+    runtime: Arc<Runtime>,
+}
+
+impl TokioActorSystem {
+    pub fn new() -> Self {
+        TokioActorSystem {
+            runtime: Arc::new(Runtime::new().unwrap()),
+        }
+    }
+}
+
+impl Default for TokioActorSystem {
+    fn default() -> Self {
+        TokioActorSystem::new()
+    }
+}
 
 impl ActorSystem for TokioActorSystem {
     fn spawn_actor<Msg, MessageHandler>(
         &mut self,
-        _name: String,
+        _node_name: String,
+        _actor_name: String,
         mut handler: MessageHandler,
     ) -> Box<dyn ActorRef<Msg>>
     where
@@ -40,7 +73,7 @@ impl ActorSystem for TokioActorSystem {
         MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             loop {
                 match rx.recv().await {
                     None => {
@@ -53,37 +86,49 @@ impl ActorSystem for TokioActorSystem {
                 }
             }
         });
-        Box::new(TokioActor { tx })
+        Box::new(TokioActor {
+            runtime: self.runtime.clone(),
+            tx,
+        })
     }
 }
 
-struct ThreadActor<M>
+struct ThreadActor<Msg>
 where
-    M: Send,
+    Msg: Send,
 {
-    tx: Sender<M>,
+    tx: Sender<Msg>,
 }
 
-impl<M> SingleThreadedActorRef<M> for ThreadActor<M>
+#[async_trait]
+impl<Msg> SingleThreadedActorRef<Msg> for ThreadActor<Msg>
 where
-    M: Send,
+    Msg: Send,
 {
-    fn async_send(&self, message: M) {
+    fn send(&mut self, message: Msg, delay: Option<Duration>) {
+        if let Some(delay_duration) = delay {
+            thread::sleep(delay_duration);
+        }
         self.tx
             .send(message)
             .expect("Bug: the actor closed the receive side!");
     }
 }
 
-impl<M> ActorRef<M> for ThreadActor<M> where M: Send {}
+impl<Msg> ActorRef<Msg> for ThreadActor<Msg> where Msg: Send {}
 
 pub struct ThreadActorSystem {}
 
 impl ActorSystem for ThreadActorSystem {
-    fn spawn_actor<Msg, MH>(&mut self, _name: String, mut handler: MH) -> Box<dyn ActorRef<Msg>>
+    fn spawn_actor<Msg, MessageHandler: 'static>(
+        &mut self,
+        _node_name: String,
+        _actor_name: String,
+        mut handler: MessageHandler,
+    ) -> Box<dyn ActorRef<Msg>>
     where
         Msg: 'static + Send,
-        MH: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
+        MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg> + Send,
     {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || loop {

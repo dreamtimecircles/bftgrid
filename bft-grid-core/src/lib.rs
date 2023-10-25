@@ -2,6 +2,7 @@ use std::{
     any::Any,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
+    time::Duration,
 };
 
 pub trait TypedMessageHandler<'msg> {
@@ -43,15 +44,16 @@ where
 }
 
 pub trait SingleThreadedActorRef<Msg> {
-    fn async_send(&self, message: Msg);
+    fn send(&mut self, message: Msg, delay: Option<Duration>);
 }
 
 pub trait ActorRef<Msg>: SingleThreadedActorRef<Msg> + Send {}
 
 pub trait SingleThreadedActorSystem {
-    fn spawn_actor<Msg, MessageHandler>(
+    fn spawn_actor<Msg, MessageHandler: 'static>(
         &mut self,
-        name: String,
+        node: String,
+        actor_name: String,
         handler: MessageHandler,
     ) -> Box<dyn SingleThreadedActorRef<Msg>>
     where
@@ -60,9 +62,10 @@ pub trait SingleThreadedActorSystem {
 }
 
 pub trait ActorSystem {
-    fn spawn_actor<Msg, MessageHandler>(
+    fn spawn_actor<Msg, MessageHandler: 'static>(
         &mut self,
-        name: String,
+        node: String,
+        actor_name: String,
         handler: MessageHandler,
     ) -> Box<dyn ActorRef<Msg>>
     where

@@ -6,7 +6,8 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
 bft-grid-core = { path = "../bft-grid-core" }
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "sync", "time"] }
+async-trait = "0.1.74"
 
 [[bin]]
 name = "bft-grid-mt"
