@@ -26,7 +26,6 @@ fn main() {
         Node::new(
             Box::new(TestHandler {}),
             Box::new(TestHandler {}),
-            HashMap::new(),
         ),
     );
     let mut simulation = Simulation::new(topology, start, end);

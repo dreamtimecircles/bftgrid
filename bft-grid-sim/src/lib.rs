@@ -5,7 +5,7 @@ use std::{
     marker::PhantomData,
     ops::Add,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, hash::Hash,
 };
 
 use async_trait::async_trait;
@@ -94,17 +94,11 @@ impl Node {
     pub fn new(
         client_request_handler: Box<dyn UntypedMessageHandler<'static>>,
         p2p_request_handler: Box<dyn UntypedMessageHandler<'static>>,
-        internal_handlers: HashMap<String, Box<dyn UntypedMessageHandler<'static>>>,
     ) -> Self {
-        let mut handlers =
-            HashMap::<Rc<String>, Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>>::new();
-        for (handler_name, handler) in internal_handlers {
-            handlers.insert(Rc::new(handler_name), Rc::new(RefCell::new(handler)));
-        }
         Node {
             client_request_handler: Rc::new(RefCell::new(client_request_handler)),
             p2p_request_handler: Rc::new(RefCell::new(p2p_request_handler)),
-            internal_handlers: handlers,
+            internal_handlers: HashMap::new(),
         }
     }
 }
