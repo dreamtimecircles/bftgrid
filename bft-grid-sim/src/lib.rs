@@ -10,14 +10,18 @@ use std::{
 
 use async_trait::async_trait;
 use bft_grid_core::{
-    SingleThreadedActorRef, SingleThreadedActorSystem, TypedMessageHandler, UntypedMessageHandler,
+    P2PNetwork, SingleThreadedActorRef, SingleThreadedActorSystem, TypedMessageHandler,
+    UntypedMessageHandler,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
 };
 
-pub struct SimulationClock {
+const SEED: u64 = 10;
+const MAX_RANDOM_DURATION: Duration = Duration::from_secs(1);
+
+pub struct SimulatedClock {
     pub current_instant: Instant,
 }
 
@@ -107,15 +111,12 @@ impl Node {
 
 type Topology = HashMap<String, Node>;
 
-const SEED: u64 = 10;
-const MAX_RANDOM_DURATION: Duration = Duration::from_secs(1);
-
 pub struct Simulation {
     pub topology: Topology,
 
     internal_events_buffer: Rc<RefCell<Vec<InternalEvent>>>,
     events_queue: BinaryHeap<SimulationEventAtInstant>,
-    clock: SimulationClock,
+    clock: SimulatedClock,
     end_instant: Instant,
     random: ChaCha8Rng,
 }
@@ -126,12 +127,23 @@ impl Simulation {
             topology,
             internal_events_buffer: Rc::new(RefCell::new(Vec::new())),
             events_queue: BinaryHeap::new(),
-            clock: SimulationClock {
+            clock: SimulatedClock {
                 current_instant: start_instant,
             },
             end_instant,
             random: ChaCha8Rng::seed_from_u64(SEED),
         }
+    }
+
+    pub fn client_send<Msg: 'static>(&mut self, to_node: String, message: Msg) {
+        let instant = self.instant_of_client_request_send();
+        self.events_queue.push(SimulationEventAtInstant {
+            instant,
+            event: SimulationEvent::ClientSend {
+                to_node: Rc::new(to_node),
+                event: Box::new(message),
+            },
+        })
     }
 
     pub fn run(mut self) {
@@ -246,23 +258,31 @@ impl Simulation {
         self.clock.current_instant.add(pseudo_random_duration)
     }
 
+    fn instant_of_client_request_send(&mut self) -> Instant {
+        self.instant_of_internal_event()
+    }
+
     fn instant_of_client_request_arrival(&mut self) -> Instant {
-        todo!()
+        self.instant_of_internal_event()
+    }
+
+    fn instant_of_p2p_request_send(&mut self) -> Instant {
+        self.instant_of_internal_event()
     }
 
     fn instant_of_p2p_request_arrival(&mut self) -> Instant {
-        todo!()
+        self.instant_of_internal_event()
     }
 }
 
-pub struct SimulationActor<M> {
+pub struct SimulatedActor<M> {
     handler: Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>,
     events_buffer: Rc<RefCell<Vec<InternalEvent>>>,
     message_type: PhantomData<M>,
 }
 
 #[async_trait]
-impl<Msg> SingleThreadedActorRef<Msg> for SimulationActor<Msg>
+impl<Msg> SingleThreadedActorRef<Msg> for SimulatedActor<Msg>
 where
     Msg: 'static,
 {
@@ -300,10 +320,36 @@ impl SingleThreadedActorSystem for Simulation {
         {
             panic!("An actor with such a name already exist");
         }
-        Box::new(SimulationActor {
+        Box::new(SimulatedActor {
             handler: handler_rc,
             events_buffer: self.internal_events_buffer.clone(),
             message_type: PhantomData {},
         })
+    }
+}
+
+impl P2PNetwork for Simulation {
+    fn send<Msg: 'static>(&mut self, message: Msg, to_node: String) {
+        let instant = self.instant_of_p2p_request_send();
+        self.events_queue.push(SimulationEventAtInstant {
+            instant,
+            event: SimulationEvent::ClientSend {
+                to_node: Rc::new(to_node),
+                event: Box::new(message),
+            },
+        })
+    }
+
+    fn broadcast<Msg: Clone + 'static>(&mut self, message: Msg) {
+        let instant = self.instant_of_p2p_request_send();
+        for node_name in self.topology.keys() {
+            self.events_queue.push(SimulationEventAtInstant {
+                instant,
+                event: SimulationEvent::ClientSend {
+                    to_node: Rc::new(node_name.clone()),
+                    event: Box::new(message.clone()),
+                },
+            })
+        }
     }
 }

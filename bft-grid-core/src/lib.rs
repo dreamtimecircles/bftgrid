@@ -72,3 +72,8 @@ pub trait ActorSystem {
         Msg: 'static + Send,
         MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg> + Send;
 }
+
+pub trait P2PNetwork {
+    fn send<Msg: 'static>(&mut self, message: Msg, node: String);
+    fn broadcast<Msg: Clone + 'static>(&mut self, message: Msg);
+}
