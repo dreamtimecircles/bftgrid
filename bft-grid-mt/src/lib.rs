@@ -106,6 +106,13 @@ impl Default for TokioActorSystem {
     }
 }
 
+fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
+    let (closed_mutex, cvar) = &*close_cond;
+    let mut closed = closed_mutex.lock().unwrap();
+    *closed = true;
+    cvar.notify_all();
+}
+
 impl ActorSystem for TokioActorSystem {
     fn spawn_actor<Msg, MessageHandler>(
         &mut self,
@@ -125,10 +132,7 @@ impl ActorSystem for TokioActorSystem {
                 match rx.recv().await {
                     None => {
                         rx.close();
-                        let (closed_mutex, cvar) = &*close_cond2;
-                        let mut closed = closed_mutex.lock().unwrap();
-                        *closed = true;
-                        cvar.notify_all();
+                        notify_close(close_cond2);
                         break;
                     }
                     Some(m) => {
@@ -136,10 +140,7 @@ impl ActorSystem for TokioActorSystem {
                             match control {
                                 bft_grid_core::ActorControl::Exit() => {
                                     rx.close();
-                                    let (closed_mutex, cvar) = &*close_cond2;
-                                    let mut closed = closed_mutex.lock().unwrap();
-                                    *closed = true;
-                                    cvar.notify_all();
+                                    notify_close(close_cond2);
                                     break;
                                 }
                             }
@@ -242,20 +243,14 @@ impl ActorSystem for ThreadActorSystem {
         thread::spawn(move || loop {
             match rx.recv() {
                 Err(RecvError) => {
-                    let (closed_mutex, cvar) = &*close_cond2;
-                    let mut closed = closed_mutex.lock().unwrap();
-                    *closed = true;
-                    cvar.notify_all();
+                    notify_close(close_cond2);
                     break;
                 }
                 Ok(m) => {
                     if let Some(control) = handler.receive(m) {
                         match control {
                             bft_grid_core::ActorControl::Exit() => {
-                                let (closed_mutex, cvar) = &*close_cond2;
-                                let mut closed = closed_mutex.lock().unwrap();
-                                *closed = true;
-                                cvar.notify_all();
+                                notify_close(close_cond2);
                                 break;
                             }
                         }
