@@ -5,10 +5,14 @@ use std::{
     time::Duration,
 };
 
+pub enum ActorControl {
+    Exit(),
+}
+
 pub trait TypedMessageHandler<'msg> {
     type Msg: 'msg;
 
-    fn receive(&mut self, message: Self::Msg);
+    fn receive(&mut self, message: Self::Msg) -> Option<ActorControl>;
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +28,10 @@ impl Display for MessageNotSupported {
 impl Error for MessageNotSupported {}
 
 pub trait UntypedMessageHandler<'msg> {
-    fn receive_untyped(&mut self, message: Box<dyn Any + 'msg>) -> Result<(), MessageNotSupported>;
+    fn receive_untyped(
+        &mut self,
+        message: Box<dyn Any + 'msg>,
+    ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
 
 impl<'msg, Msg, X> UntypedMessageHandler<'msg> for X
@@ -32,22 +39,29 @@ where
     Msg: 'msg,
     X: TypedMessageHandler<'msg, Msg = Msg>,
 {
-    fn receive_untyped(&mut self, message: Box<dyn Any + 'msg>) -> Result<(), MessageNotSupported> {
+    fn receive_untyped(
+        &mut self,
+        message: Box<dyn Any + 'msg>,
+    ) -> Result<Option<ActorControl>, MessageNotSupported> {
         match message.downcast::<X::Msg>() {
-            Ok(typed_message) => {
-                self.receive(*typed_message);
-                Result::Ok(())
-            }
+            Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
             Err(_) => Result::Err(MessageNotSupported()),
         }
     }
 }
 
-pub trait SingleThreadedActorRef<Msg> {
-    fn send(&mut self, message: Msg, delay: Option<Duration>);
+pub trait Joinable<Output> {
+    fn join(self: Box<Self>) -> Output;
+    fn is_finished(&mut self) -> bool;
 }
 
-pub trait ActorRef<Msg>: SingleThreadedActorRef<Msg> + Send {}
+pub trait SingleThreadedActorRef<Msg> {
+    fn send(&mut self, message: Msg, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
+}
+
+pub trait ActorRef<Msg>: SingleThreadedActorRef<Msg> + Joinable<()> + Send {
+    fn clone(&self) -> Box<dyn ActorRef<Msg>>;
+}
 
 pub trait SingleThreadedActorSystem {
     fn spawn_actor<Msg, MessageHandler: 'static>(

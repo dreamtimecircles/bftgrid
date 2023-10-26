@@ -4,13 +4,14 @@ use std::{
     collections::{BinaryHeap, HashMap},
     marker::PhantomData,
     ops::Add,
+    ptr,
     rc::Rc,
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
 use bft_grid_core::{
-    P2PNetwork, SingleThreadedActorRef, SingleThreadedActorSystem, TypedMessageHandler,
+    Joinable, P2PNetwork, SingleThreadedActorRef, SingleThreadedActorSystem, TypedMessageHandler,
     UntypedMessageHandler,
 };
 use rand_chacha::{
@@ -108,6 +109,7 @@ type Topology = HashMap<String, Node>;
 pub struct Simulation {
     pub topology: Topology,
 
+    exited: Vec<Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>>,
     internal_events_buffer: Rc<RefCell<Vec<InternalEvent>>>,
     events_queue: BinaryHeap<SimulationEventAtInstant>,
     clock: SimulatedClock,
@@ -119,6 +121,7 @@ impl Simulation {
     pub fn new(topology: Topology, start_instant: Instant, end_instant: Instant) -> Simulation {
         Simulation {
             topology,
+            exited: Vec::new(),
             internal_events_buffer: Rc::new(RefCell::new(Vec::new())),
             events_queue: BinaryHeap::new(),
             clock: SimulatedClock {
@@ -235,10 +238,27 @@ impl Simulation {
                             },
                         },
                     }),
-                    None => to_handler
-                        .borrow_mut()
-                        .receive_untyped(event)
-                        .expect("Found event targeting the wrong actor"),
+                    None => {
+                        if self
+                            .exited
+                            .iter()
+                            .any(|elem| ptr::eq((**elem).as_ptr(), to_handler.as_ptr()))
+                        {
+                            panic!("Message sent to actor that has exited")
+                        }
+
+                        if let Some(control) = to_handler
+                            .borrow_mut()
+                            .receive_untyped(event)
+                            .expect("Found event targeting the wrong actor")
+                        {
+                            match control {
+                                bft_grid_core::ActorControl::Exit() => {
+                                    self.exited.push(to_handler.clone())
+                                }
+                            }
+                        }
+                    }
                 },
                 SimulationEvent::SimulationEnd => return,
             }
@@ -275,17 +295,30 @@ pub struct SimulatedActor<M> {
     message_type: PhantomData<M>,
 }
 
+struct Ready {}
+
+impl Joinable<Option<()>> for Ready {
+    fn join(self: Box<Self>) -> Option<()> {
+        Some(())
+    }
+
+    fn is_finished(&mut self) -> bool {
+        true
+    }
+}
+
 #[async_trait]
 impl<Msg> SingleThreadedActorRef<Msg> for SimulatedActor<Msg>
 where
     Msg: 'static,
 {
-    fn send(&mut self, message: Msg, delay: Option<Duration>) {
+    fn send(&mut self, message: Msg, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
         self.events_buffer.borrow_mut().push(InternalEvent {
             to_handler: self.handler.clone(),
             event: Box::new(message),
             delay,
         });
+        Box::new(Ready {})
     }
 }
 
