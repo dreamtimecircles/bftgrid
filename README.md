@@ -1,15 +1,12 @@
-# `bftbench-rust`
+# `bftgrid`
 
-An asynchronous, [Tokio]-based Rust BFT benchmarking framework.
-
-See [`bft-bench-shortcircuit`](./bft-bench-shortcircuit) and [`echo-grpc`](./echo-grpc) for examples.
-
-[tokio]: https://tokio.rs/
+An actor framework to implement and test BFT protocols.
 
 ## TODO
 
 ### Before merging
 
+- [ ] Self-send
 - [ ] Pre-build refs for cyclic init
 - [ ] Actors spawning actors
 - [ ] Switch behavior
