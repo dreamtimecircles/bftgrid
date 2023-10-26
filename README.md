@@ -7,10 +7,11 @@ An actor framework to implement and test BFT protocols.
 ### Before merging
 
 - [ ] Self-send
-- [ ] Pre-build refs for cyclic init
+- [ ] Sending refs
 - [ ] Actors spawning actors
 - [ ] Switch behavior
 - [ ] Multi-node simulation example
+- [ ] Support abstracting system construction code
 
 ## Before publishing
 

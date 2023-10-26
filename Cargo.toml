@@ -1,2 +1,3 @@
 [workspace]
 members = ["bft-grid-core", "bft-grid-mt", "bft-grid-sim", "prototypes/dag/narwhal/shoal"]
+resolver = "2"

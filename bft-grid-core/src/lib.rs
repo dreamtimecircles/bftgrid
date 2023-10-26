@@ -51,16 +51,23 @@ where
 }
 
 pub trait Joinable<Output> {
-    fn join(self: Box<Self>) -> Output;
+    fn join(self) -> Output;
     fn is_finished(&mut self) -> bool;
 }
 
-pub trait SingleThreadedActorRef<Msg> {
+pub trait SingleThreadedActorRef<Msg>
+where
+    Msg: 'static,
+{
     fn send(&mut self, message: Msg, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
 }
 
-pub trait ActorRef<Msg>: SingleThreadedActorRef<Msg> + Joinable<()> + Send {
-    fn clone(&self) -> Box<dyn ActorRef<Msg>>;
+pub trait ActorRef<Msg, MessageHandler>: SingleThreadedActorRef<Msg> + Joinable<()> + Send
+where
+    Msg: 'static,
+    MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static,
+{
+    fn clone(&self) -> Box<dyn ActorRef<Msg, MessageHandler>>;
 }
 
 pub trait SingleThreadedActorSystem {
@@ -72,19 +79,31 @@ pub trait SingleThreadedActorSystem {
     ) -> Box<dyn SingleThreadedActorRef<Msg>>
     where
         Msg: 'static,
-        MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg>;
+        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static;
 }
 
 pub trait ActorSystem {
-    fn spawn_actor<Msg, MessageHandler: 'static>(
+    type ConcreteActorRef<Msg, MessageHandler>: SingleThreadedActorRef<Msg>
+    where
+        Msg: Send + 'static,
+        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static;
+
+    fn create<Msg, MessageHandler>(
         &mut self,
         node: String,
         actor_name: String,
-        handler: MessageHandler,
-    ) -> Box<dyn ActorRef<Msg>>
+    ) -> Self::ConcreteActorRef<Msg, MessageHandler>
     where
+        Msg: Send + 'static,
+        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + Send + 'static;
+
+    fn set_handler<Msg, MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static>(
+        &mut self,
+        actor_ref: &mut Self::ConcreteActorRef<Msg, MessageHandler>,
+        handler: MessageHandler,
+    ) where
         Msg: 'static + Send,
-        MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg> + Send;
+        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + Send + 'static;
 }
 
 pub trait P2PNetwork {

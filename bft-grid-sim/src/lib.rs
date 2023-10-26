@@ -289,16 +289,16 @@ impl Simulation {
     }
 }
 
-pub struct SimulatedActor<M> {
+pub struct SimulatedActor<Msg> {
     handler: Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>,
     events_buffer: Rc<RefCell<Vec<InternalEvent>>>,
-    message_type: PhantomData<M>,
+    message_type: PhantomData<Msg>,
 }
 
 struct Ready {}
 
 impl Joinable<Option<()>> for Ready {
-    fn join(self: Box<Self>) -> Option<()> {
+    fn join(self) -> Option<()> {
         Some(())
     }
 
