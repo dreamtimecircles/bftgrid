@@ -9,10 +9,10 @@ pub enum ActorControl {
     Exit(),
 }
 
-pub trait TypedMessageHandler<'msg> {
-    type Msg: 'msg;
+pub trait TypedHandler<'msg> {
+    type MsgT: 'msg;
 
-    fn receive(&mut self, message: Self::Msg) -> Option<ActorControl>;
+    fn receive(&mut self, message: Self::MsgT) -> Option<ActorControl>;
 }
 
 #[derive(Debug, Clone)]
@@ -27,23 +27,23 @@ impl Display for MessageNotSupported {
 
 impl Error for MessageNotSupported {}
 
-pub trait UntypedMessageHandler<'msg> {
+pub trait UntypedHandler<'msg> {
     fn receive_untyped(
         &mut self,
         message: Box<dyn Any + 'msg>,
     ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
 
-impl<'msg, Msg, X> UntypedMessageHandler<'msg> for X
+impl<'msg, Msg, HandlerT> UntypedHandler<'msg> for HandlerT
 where
     Msg: 'msg,
-    X: TypedMessageHandler<'msg, Msg = Msg>,
+    HandlerT: TypedHandler<'msg, MsgT = Msg>,
 {
     fn receive_untyped(
         &mut self,
         message: Box<dyn Any + 'msg>,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match message.downcast::<X::Msg>() {
+        match message.downcast::<HandlerT::MsgT>() {
             Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
             Err(_) => Result::Err(MessageNotSupported()),
         }
@@ -55,58 +55,54 @@ pub trait Joinable<Output> {
     fn is_finished(&mut self) -> bool;
 }
 
-pub trait SingleThreadedActorRef<Msg>
+pub trait SingleThreadedActorRef<MsgT>
 where
-    Msg: 'static,
+    MsgT: 'static,
 {
-    fn send(&mut self, message: Msg, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
+    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
 }
 
-pub trait ActorRef<Msg, MessageHandler>: SingleThreadedActorRef<Msg> + Joinable<()> + Send
+pub trait ActorRef<MsgT, HandlerT>: SingleThreadedActorRef<MsgT> + Joinable<()> + Send
 where
-    Msg: 'static,
-    MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static,
+    MsgT: 'static,
+    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
-    fn clone(&self) -> Box<dyn ActorRef<Msg, MessageHandler>>;
+    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
 }
 
-pub trait SingleThreadedActorSystem {
-    fn spawn_actor<Msg, MessageHandler: 'static>(
+pub trait SimulatedActorSystem {
+    fn spawn_actor<MsgT, HandlerT: 'static>(
         &mut self,
         node: String,
         actor_name: String,
-        handler: MessageHandler,
-    ) -> Box<dyn SingleThreadedActorRef<Msg>>
+        handler: HandlerT,
+    ) -> Box<dyn SingleThreadedActorRef<MsgT>>
     where
-        Msg: 'static,
-        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static;
+        MsgT: 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 }
 
 pub trait ActorSystem {
-    type ConcreteActorRef<Msg, MessageHandler>: SingleThreadedActorRef<Msg>
+    type ConcreteActorRef<MsgT, HandlerT>: SingleThreadedActorRef<MsgT>
     where
-        Msg: Send + 'static,
-        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static;
+        MsgT: Send + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 
-    fn create<Msg, MessageHandler>(
-        &mut self,
-        node: String,
-        actor_name: String,
-    ) -> Self::ConcreteActorRef<Msg, MessageHandler>
+    fn create<MsgT, HandlerT>(&mut self) -> Self::ConcreteActorRef<MsgT, HandlerT>
     where
-        Msg: Send + 'static,
-        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + Send + 'static;
+        MsgT: Send + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
-    fn set_handler<Msg, MessageHandler: TypedMessageHandler<'static, Msg = Msg> + 'static>(
+    fn set_handler<MsgT, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
         &mut self,
-        actor_ref: &mut Self::ConcreteActorRef<Msg, MessageHandler>,
-        handler: MessageHandler,
+        actor_ref: &mut Self::ConcreteActorRef<MsgT, HandlerT>,
+        handler: HandlerT,
     ) where
-        Msg: 'static + Send,
-        MessageHandler: TypedMessageHandler<'static, Msg = Msg> + Send + 'static;
+        MsgT: 'static + Send,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 }
 
 pub trait P2PNetwork {
-    fn send<Msg: 'static>(&mut self, message: Msg, node: String);
-    fn broadcast<Msg: Clone + 'static>(&mut self, message: Msg);
+    fn send<MsgT: 'static>(&mut self, message: MsgT, node: String);
+    fn broadcast<MsgT: Clone + 'static>(&mut self, message: MsgT);
 }

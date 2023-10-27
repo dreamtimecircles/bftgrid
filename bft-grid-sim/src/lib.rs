@@ -11,8 +11,8 @@ use std::{
 
 use async_trait::async_trait;
 use bft_grid_core::{
-    Joinable, P2PNetwork, SingleThreadedActorRef, SingleThreadedActorSystem, TypedMessageHandler,
-    UntypedMessageHandler,
+    Joinable, P2PNetwork, SimulatedActorSystem, SingleThreadedActorRef, TypedHandler,
+    UntypedHandler,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -27,7 +27,7 @@ pub struct SimulatedClock {
 }
 
 pub struct InternalEvent {
-    to_handler: Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>,
+    to_handler: Rc<RefCell<Box<dyn UntypedHandler<'static>>>>,
     event: Box<dyn Any>,
     delay: Option<Duration>,
 }
@@ -86,15 +86,15 @@ impl Ord for SimulationEventAtInstant {
 }
 
 pub struct Node {
-    client_request_handler: Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>,
-    p2p_request_handler: Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>,
-    internal_handlers: HashMap<Rc<String>, Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>>,
+    client_request_handler: Rc<RefCell<Box<dyn UntypedHandler<'static>>>>,
+    p2p_request_handler: Rc<RefCell<Box<dyn UntypedHandler<'static>>>>,
+    internal_handlers: HashMap<Rc<String>, Rc<RefCell<Box<dyn UntypedHandler<'static>>>>>,
 }
 
 impl Node {
     pub fn new(
-        client_request_handler: Box<dyn UntypedMessageHandler<'static>>,
-        p2p_request_handler: Box<dyn UntypedMessageHandler<'static>>,
+        client_request_handler: Box<dyn UntypedHandler<'static>>,
+        p2p_request_handler: Box<dyn UntypedHandler<'static>>,
     ) -> Self {
         Node {
             client_request_handler: Rc::new(RefCell::new(client_request_handler)),
@@ -109,7 +109,7 @@ type Topology = HashMap<String, Node>;
 pub struct Simulation {
     pub topology: Topology,
 
-    exited: Vec<Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>>,
+    exited: Vec<Rc<RefCell<Box<dyn UntypedHandler<'static>>>>>,
     internal_events_buffer: Rc<RefCell<Vec<InternalEvent>>>,
     events_queue: BinaryHeap<SimulationEventAtInstant>,
     clock: SimulatedClock,
@@ -289,10 +289,10 @@ impl Simulation {
     }
 }
 
-pub struct SimulatedActor<Msg> {
-    handler: Rc<RefCell<Box<dyn UntypedMessageHandler<'static>>>>,
+pub struct SimulatedActor<MsgT> {
+    handler: Rc<RefCell<Box<dyn UntypedHandler<'static>>>>,
     events_buffer: Rc<RefCell<Vec<InternalEvent>>>,
-    message_type: PhantomData<Msg>,
+    message_type: PhantomData<MsgT>,
 }
 
 struct Ready {}
@@ -308,11 +308,11 @@ impl Joinable<Option<()>> for Ready {
 }
 
 #[async_trait]
-impl<Msg> SingleThreadedActorRef<Msg> for SimulatedActor<Msg>
+impl<MsgT> SingleThreadedActorRef<MsgT> for SimulatedActor<MsgT>
 where
-    Msg: 'static,
+    MsgT: 'static,
 {
-    fn send(&mut self, message: Msg, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
+    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
         self.events_buffer.borrow_mut().push(InternalEvent {
             to_handler: self.handler.clone(),
             event: Box::new(message),
@@ -322,21 +322,19 @@ where
     }
 }
 
-impl SingleThreadedActorSystem for Simulation {
-    fn spawn_actor<Msg, MessageHandler>(
+impl SimulatedActorSystem for Simulation {
+    fn spawn_actor<MsgT, MessageHandler>(
         &mut self,
         node: String,
         actor_name: String,
         handler: MessageHandler,
-    ) -> Box<dyn SingleThreadedActorRef<Msg>>
+    ) -> Box<dyn SingleThreadedActorRef<MsgT>>
     where
-        Msg: 'static,
-        MessageHandler: 'static + TypedMessageHandler<'static, Msg = Msg>,
+        MsgT: 'static,
+        MessageHandler: 'static + TypedHandler<'static, MsgT = MsgT>,
     {
         let shared_node = Rc::new(node);
-        let handler_rc = Rc::new(RefCell::new(
-            Box::new(handler) as Box<dyn UntypedMessageHandler>
-        ));
+        let handler_rc = Rc::new(RefCell::new(Box::new(handler) as Box<dyn UntypedHandler>));
         if self
             .topology
             .get_mut(shared_node.as_ref())
@@ -356,7 +354,10 @@ impl SingleThreadedActorSystem for Simulation {
 }
 
 impl P2PNetwork for Simulation {
-    fn send<Msg: 'static>(&mut self, message: Msg, to_node: String) {
+    fn send<MsgT>(&mut self, message: MsgT, to_node: String)
+    where
+        MsgT: 'static,
+    {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue.push(SimulationEventAtInstant {
             instant,
@@ -367,7 +368,10 @@ impl P2PNetwork for Simulation {
         })
     }
 
-    fn broadcast<Msg: Clone + 'static>(&mut self, message: Msg) {
+    fn broadcast<MsgT>(&mut self, message: MsgT)
+    where
+        MsgT: Clone + 'static,
+    {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.keys() {
             self.events_queue.push(SimulationEventAtInstant {

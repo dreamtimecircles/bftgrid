@@ -2,19 +2,15 @@
 
 An actor framework to implement and test BFT protocols.
 
-## TODO
+## TODO before publishing
 
-### Before merging
-
-- [ ] Self-send
-- [ ] Sending refs
-- [ ] Actors spawning actors
+- [ ] Support ref cycles in simulation
+- [ ] Support swapping handlers in simulation
+- [ ] Support actors spawning actors
 - [ ] Switch behavior
 - [ ] Multi-node simulation example
 - [ ] Support abstracting system construction code
-
-## Before publishing
-
+- [ ] Docs
 - [ ] Protocol implementation (at least toy one)
 - [ ] Unit tests
 - [ ] Simulation tests

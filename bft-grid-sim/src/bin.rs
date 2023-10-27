@@ -4,13 +4,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bft_grid_core::{ActorControl, SingleThreadedActorSystem, TypedMessageHandler};
+use bft_grid_core::{ActorControl, SimulatedActorSystem, TypedHandler};
 use bft_grid_sim::{Node, Simulation};
 
 struct TestHandler {}
 
-impl TypedMessageHandler<'_> for TestHandler {
-    type Msg = ();
+impl TypedHandler<'_> for TestHandler {
+    type MsgT = ();
 
     fn receive(&mut self, _: ()) -> Option<ActorControl> {
         println!("Received");
