@@ -1,6 +1,4 @@
-use bft_grid_core::{
-    ActorControl, ActorRef, ActorSystem, Joinable, SingleThreadedActorRef, TypedHandler,
-};
+use bft_grid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
 use bft_grid_mt::{ThreadActorSystem, TokioActorSystem};
 
 struct Actor1ToActor2(Box<dyn ActorRef<(), Actor1>>);
@@ -52,11 +50,11 @@ impl TypedHandler<'_> for Actor1 {
 
 fn main() {
     let mut tokio_actor_system = TokioActorSystem::new();
-    let mut async_actor_ref = tokio_actor_system.create();
+    let mut async_actor_ref = tokio_actor_system.create("node".into(), "actor2".into());
     tokio_actor_system.set_handler(&mut async_actor_ref, Actor2 {});
     let async_actor_ref2 = async_actor_ref.new_ref();
     let mut thread_actor_system = ThreadActorSystem {};
-    let mut sync_actor_ref = thread_actor_system.create();
+    let mut sync_actor_ref = thread_actor_system.create("node".into(), "actor1".into());
     let sync_actor_ref2 = sync_actor_ref.new_ref();
     thread_actor_system.set_handler(
         &mut sync_actor_ref,

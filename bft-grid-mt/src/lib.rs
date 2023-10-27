@@ -9,7 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bft_grid_core::{ActorRef, ActorSystem, Joinable, SingleThreadedActorRef, TypedHandler};
+use bft_grid_core::{ActorRef, ActorSystem, Joinable, TypedHandler};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
@@ -60,10 +60,10 @@ where
 }
 
 #[async_trait]
-impl<MsgT, HandlerT> SingleThreadedActorRef<MsgT> for TokioActor<MsgT, HandlerT>
+impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
 where
     MsgT: Send + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
         let sender = self.tx.clone();
@@ -77,13 +77,7 @@ where
             }),
         })
     }
-}
 
-impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
-where
-    MsgT: Send + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
-{
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>
     where
         Self: Sized,
@@ -125,10 +119,14 @@ fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
 impl ActorSystem for TokioActorSystem {
     type ConcreteActorRef<
         MsgT: Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     > = TokioActor<MsgT, HandlerT>;
 
-    fn create<MsgT, HandlerT>(&mut self) -> TokioActor<MsgT, HandlerT>
+    fn create<MsgT, HandlerT>(
+        &mut self,
+        _name: String,
+        _node_id: String,
+    ) -> TokioActor<MsgT, HandlerT>
     where
         MsgT: 'static + Send,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
@@ -148,7 +146,7 @@ impl ActorSystem for TokioActorSystem {
                         rx.close();
                         handler_rx.close();
                         notify_close(close_cond2);
-                        break;
+                        return;
                     }
                     Some(m) => {
                         if let Some(control) = current_handler.receive(m) {
@@ -157,7 +155,7 @@ impl ActorSystem for TokioActorSystem {
                                     rx.close();
                                     handler_rx.close();
                                     notify_close(close_cond2);
-                                    break;
+                                    return;
                                 }
                             }
                         }
@@ -226,10 +224,10 @@ where
 }
 
 #[async_trait]
-impl<MsgT, HandlerT> SingleThreadedActorRef<MsgT> for ThreadActor<MsgT, HandlerT>
+impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for ThreadActor<MsgT, HandlerT>
 where
     MsgT: Send + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
         let sender = self.tx.clone();
@@ -242,13 +240,7 @@ where
             }),
         })
     }
-}
 
-impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for ThreadActor<MsgT, HandlerT>
-where
-    MsgT: Send + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
-{
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>
     where
         Self: Sized,
@@ -267,9 +259,13 @@ impl ActorSystem for ThreadActorSystem {
     type ConcreteActorRef<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
     where
         MsgT: 'static + Send,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
-    fn create<MsgT, HandlerT>(&mut self) -> ThreadActor<MsgT, HandlerT>
+    fn create<MsgT, HandlerT>(
+        &mut self,
+        _name: String,
+        _node_id: String,
+    ) -> ThreadActor<MsgT, HandlerT>
     where
         MsgT: 'static + Send,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
@@ -287,14 +283,14 @@ impl ActorSystem for ThreadActorSystem {
                 match rx.recv() {
                     Err(RecvError) => {
                         notify_close(close_cond2);
-                        break;
+                        return;
                     }
                     Ok(m) => {
                         if let Some(control) = current_handler.receive(m) {
                             match control {
                                 bft_grid_core::ActorControl::Exit() => {
                                     notify_close(close_cond2);
-                                    break;
+                                    return;
                                 }
                             }
                         }
@@ -315,7 +311,7 @@ impl ActorSystem for ThreadActorSystem {
         handler: HandlerT,
     ) where
         MsgT: 'static + Send,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
     }

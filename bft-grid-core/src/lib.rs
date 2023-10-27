@@ -55,40 +55,26 @@ pub trait Joinable<Output> {
     fn is_finished(&mut self) -> bool;
 }
 
-pub trait SingleThreadedActorRef<MsgT>
-where
-    MsgT: 'static,
-{
-    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
-}
-
-pub trait ActorRef<MsgT, HandlerT>: SingleThreadedActorRef<MsgT> + Joinable<()> + Send
+pub trait ActorRef<MsgT, HandlerT>: Joinable<()> + Send
 where
     MsgT: 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
+    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
 }
 
-pub trait SimulatedActorSystem {
-    fn spawn_actor<MsgT, HandlerT: 'static>(
-        &mut self,
-        node: String,
-        actor_name: String,
-        handler: HandlerT,
-    ) -> Box<dyn SingleThreadedActorRef<MsgT>>
-    where
-        MsgT: 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
-}
-
 pub trait ActorSystem {
-    type ConcreteActorRef<MsgT, HandlerT>: SingleThreadedActorRef<MsgT>
+    type ConcreteActorRef<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
         MsgT: Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
-    fn create<MsgT, HandlerT>(&mut self) -> Self::ConcreteActorRef<MsgT, HandlerT>
+    fn create<MsgT, HandlerT>(
+        &mut self,
+        node_id: String,
+        name: String,
+    ) -> Self::ConcreteActorRef<MsgT, HandlerT>
     where
         MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
@@ -103,6 +89,6 @@ pub trait ActorSystem {
 }
 
 pub trait P2PNetwork {
-    fn send<MsgT: 'static>(&mut self, message: MsgT, node: String);
-    fn broadcast<MsgT: Clone + 'static>(&mut self, message: MsgT);
+    fn send<MsgT: Send + 'static>(&mut self, message: MsgT, node: String);
+    fn broadcast<MsgT: Clone + Send + 'static>(&mut self, message: MsgT);
 }

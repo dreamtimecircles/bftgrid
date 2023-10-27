@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bft_grid_core::{ActorControl, SimulatedActorSystem, TypedHandler};
+use bft_grid_core::{ActorControl, ActorRef, ActorSystem, TypedHandler};
 use bft_grid_sim::{Node, Simulation};
 
 struct TestHandler {}
@@ -22,15 +22,12 @@ fn main() {
     let start = Instant::now();
     let end = start.add(Duration::from_secs(60));
     let mut topology = HashMap::<String, Node>::new();
-    topology.insert(
-        "node".into(),
-        Node::new(Box::new(TestHandler {}), Box::new(TestHandler {})),
-    );
+    topology.insert("node".into(), Node::new());
     let mut simulation = Simulation::new(topology, start, end);
-    let handler1 = TestHandler {};
-    let handler2 = TestHandler {};
-    let mut test1 = simulation.spawn_actor("node".into(), "test1".into(), handler1);
-    let mut test2 = simulation.spawn_actor("node".into(), "test2".into(), handler2);
+    let mut test1 = simulation.create::<(), TestHandler>("node".into(), "test1".into());
+    let mut test2 = simulation.create::<(), TestHandler>("node".into(), "test2".into());
+    simulation.set_handler(&mut test1, TestHandler {});
+    simulation.set_handler(&mut test2, TestHandler {});
     test1.send((), None);
     test2.send((), None);
     simulation.run();
