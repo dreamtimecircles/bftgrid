@@ -5,7 +5,6 @@ An actor framework to implement and test BFT protocols.
 ## TODO before publishing
 
 - [ ] Support actors spawning actors
-- [ ] Switch behavior
 - [ ] Multi-node simulation example
 - [ ] Support abstracting system construction code
 - [ ] Docs

@@ -65,7 +65,7 @@ where
 }
 
 pub trait ActorSystem {
-    type ConcreteActorRef<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
+    type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
         MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
@@ -74,14 +74,14 @@ pub trait ActorSystem {
         &mut self,
         node_id: String,
         name: String,
-    ) -> Self::ConcreteActorRef<MsgT, HandlerT>
+    ) -> Self::ActorRefT<MsgT, HandlerT>
     where
         MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn set_handler<MsgT, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
         &mut self,
-        actor_ref: &mut Self::ConcreteActorRef<MsgT, HandlerT>,
+        actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
         MsgT: 'static + Send,

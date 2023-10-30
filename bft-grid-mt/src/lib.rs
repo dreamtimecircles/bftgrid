@@ -117,10 +117,10 @@ fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
 }
 
 impl ActorSystem for TokioActorSystem {
-    type ConcreteActorRef<
-        MsgT: Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
-    > = TokioActor<MsgT, HandlerT>;
+    type ActorRefT<MsgT, HandlerT> = TokioActor<MsgT, HandlerT>
+    where
+        MsgT: 'static + Send,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn create<MsgT, HandlerT>(
         &mut self,
@@ -256,7 +256,7 @@ where
 pub struct ThreadActorSystem {}
 
 impl ActorSystem for ThreadActorSystem {
-    type ConcreteActorRef<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
+    type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
     where
         MsgT: 'static + Send,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
@@ -307,7 +307,7 @@ impl ActorSystem for ThreadActorSystem {
 
     fn set_handler<MsgT, HandlerT>(
         &mut self,
-        actor_ref: &mut Self::ConcreteActorRef<MsgT, HandlerT>,
+        actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
         MsgT: 'static + Send,

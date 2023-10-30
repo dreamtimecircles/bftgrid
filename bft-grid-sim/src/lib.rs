@@ -390,7 +390,7 @@ where
 }
 
 impl ActorSystem for Simulation {
-    type ConcreteActorRef<
+    type ActorRefT<
         MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     > = SimulatedActor<MsgT, HandlerT>;
@@ -433,7 +433,7 @@ impl ActorSystem for Simulation {
 
     fn set_handler<MsgT, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
         &mut self,
-        actor_ref: &mut Self::ConcreteActorRef<MsgT, HandlerT>,
+        actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
         MsgT: 'static + Send,
