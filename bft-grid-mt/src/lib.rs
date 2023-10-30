@@ -95,6 +95,14 @@ pub struct TokioActorSystem {
     runtime: Arc<Runtime>,
 }
 
+impl Clone for TokioActorSystem {
+    fn clone(&self) -> Self {
+        TokioActorSystem {
+            runtime: self.runtime.clone(),
+        }
+    }
+}
+
 impl TokioActorSystem {
     pub fn new() -> Self {
         TokioActorSystem {
@@ -254,6 +262,12 @@ where
 }
 
 pub struct ThreadActorSystem {}
+
+impl Clone for ThreadActorSystem {
+    fn clone(&self) -> Self {
+        ThreadActorSystem {}
+    }
+}
 
 impl ActorSystem for ThreadActorSystem {
     type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>

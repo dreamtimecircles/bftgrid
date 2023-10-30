@@ -19,7 +19,7 @@ const SEED: u64 = 10;
 const MAX_RANDOM_DURATION: Duration = Duration::from_secs(1);
 
 pub struct SimulatedClock {
-    pub current_instant: Instant,
+    current_instant: Instant,
 }
 
 pub struct InternalEvent {
@@ -106,221 +106,6 @@ impl Default for Node {
     }
 }
 
-type Topology = HashMap<String, Node>;
-
-pub struct Simulation {
-    topology: Arc<Mutex<Topology>>,
-    exited_actors: Vec<Arc<String>>,
-    internal_events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
-    events_queue: BinaryHeap<SimulationEventAtInstant>,
-    clock: SimulatedClock,
-    random: ChaCha8Rng,
-    end_instant: Instant,
-    finished_cond: Arc<(Mutex<bool>, Condvar)>,
-}
-
-impl Simulation {
-    pub fn new(topology: Topology, start_instant: Instant, end_instant: Instant) -> Simulation {
-        Simulation {
-            topology: Arc::new(Mutex::new(topology)),
-            exited_actors: Vec::new(),
-            internal_events_buffer: Arc::new(Mutex::new(Vec::new())),
-            events_queue: BinaryHeap::new(),
-            clock: SimulatedClock {
-                current_instant: start_instant,
-            },
-            random: ChaCha8Rng::seed_from_u64(SEED),
-            end_instant,
-            finished_cond: Arc::new((Mutex::new(false), Condvar::new())),
-        }
-    }
-
-    pub fn client_send<Msg>(&mut self, to_node: String, message: Msg)
-    where
-        Msg: Send + 'static,
-    {
-        let instant = self.instant_of_client_request_send();
-        self.events_queue.push(SimulationEventAtInstant {
-            instant,
-            event: SimulationEvent::ClientSend {
-                to_node: Arc::new(to_node),
-                event: Box::new(message),
-            },
-        })
-    }
-
-    pub fn run(mut self) {
-        let instant = self.end_instant;
-        self.events_queue.push(SimulationEventAtInstant {
-            instant,
-            event: SimulationEvent::SimulationEnd,
-        });
-
-        while !self.events_queue.is_empty() {
-            let mut mutex_buffer = self.internal_events_buffer.lock().unwrap();
-            let mut events_buffer = Vec::new();
-            mem::swap(&mut *mutex_buffer, &mut events_buffer);
-            drop(mutex_buffer);
-            for event in events_buffer {
-                let instant = self.instant_of_internal_event();
-                self.events_queue.push(SimulationEventAtInstant {
-                    instant,
-                    event: SimulationEvent::Internal { event },
-                })
-            }
-
-            let e = self.events_queue.pop().unwrap();
-            self.clock.current_instant = e.instant;
-
-            match e.event {
-                SimulationEvent::ClientSend { to_node, event } => {
-                    let client_request_arrival_instant = self.instant_of_client_request_arrival();
-                    self.events_queue.push(SimulationEventAtInstant {
-                        instant: client_request_arrival_instant,
-                        event: SimulationEvent::ClientRequest { to_node, event },
-                    })
-                }
-                SimulationEvent::ClientRequest { to_node, event } => {
-                    let internal_event_instant = self.instant_of_internal_event();
-                    let client_request_handler = self
-                        .topology
-                        .lock()
-                        .unwrap()
-                        .get(to_node.as_ref())
-                        .unwrap()
-                        .client_request_handler
-                        .as_ref()
-                        .expect("client request handler unset")
-                        .clone();
-                    self.events_queue.push(SimulationEventAtInstant {
-                        instant: internal_event_instant,
-                        event: SimulationEvent::Internal {
-                            event: InternalEvent {
-                                node: to_node,
-                                handler: client_request_handler,
-                                event,
-                                delay: None,
-                            },
-                        },
-                    })
-                }
-                SimulationEvent::P2PSend { to_node, event } => {
-                    let p2p_request_arrival_instant = self.instant_of_p2p_request_arrival();
-                    self.events_queue.push(SimulationEventAtInstant {
-                        instant: p2p_request_arrival_instant,
-                        event: SimulationEvent::P2PRequest {
-                            node: to_node,
-                            event,
-                        },
-                    });
-                }
-                SimulationEvent::P2PRequest { node, event } => {
-                    let internal_event_instant = self.instant_of_internal_event();
-                    let p2p_request_handler = self
-                        .topology
-                        .lock()
-                        .unwrap()
-                        .get(node.as_ref())
-                        .unwrap()
-                        .p2p_request_handler
-                        .as_ref()
-                        .expect("P2P request handler unset")
-                        .clone();
-                    self.events_queue.push(SimulationEventAtInstant {
-                        instant: internal_event_instant,
-                        event: SimulationEvent::Internal {
-                            event: InternalEvent {
-                                node,
-                                handler: p2p_request_handler,
-                                event,
-                                delay: None,
-                            },
-                        },
-                    })
-                }
-                SimulationEvent::Internal {
-                    event:
-                        InternalEvent {
-                            node,
-                            handler,
-                            event,
-                            delay,
-                        },
-                } => match delay {
-                    Some(duration) => self.events_queue.push(SimulationEventAtInstant {
-                        instant: e.instant.add(duration),
-                        event: SimulationEvent::Internal {
-                            event: InternalEvent {
-                                node,
-                                handler,
-                                event,
-                                delay: None,
-                            },
-                        },
-                    }),
-                    None => {
-                        if self.exited_actors.iter().any(|elem| *elem == handler) {
-                            panic!("Message sent to actor that has exited")
-                        }
-
-                        let topology = self.topology.lock().unwrap();
-                        let handler_arc = topology
-                            .get(node.as_ref())
-                            .expect("node not found")
-                            .all_handlers
-                            .get(&handler)
-                            .expect("handler not found");
-                        if let Some(control) = handler_arc
-                            .lock()
-                            .unwrap()
-                            .as_mut()
-                            .expect("handler not set")
-                            .receive_untyped(event)
-                            .expect("Found event targeting the wrong actor")
-                        {
-                            match control {
-                                bft_grid_core::ActorControl::Exit() => {
-                                    self.exited_actors.push(handler)
-                                }
-                            }
-                        };
-                    }
-                },
-                SimulationEvent::SimulationEnd => {
-                    let (finished_mutex, cvar) = &*self.finished_cond;
-                    let mut finished = finished_mutex.lock().unwrap();
-                    *finished = true;
-                    cvar.notify_all();
-                    break;
-                }
-            }
-        }
-    }
-
-    fn instant_of_internal_event(&mut self) -> Instant {
-        let pseudo_random_between_zero_and_one = self.random.next_u64() as f64 / u64::MAX as f64;
-        let pseudo_random_duration =
-            MAX_RANDOM_DURATION.mul_f64(pseudo_random_between_zero_and_one);
-        self.clock.current_instant.add(pseudo_random_duration)
-    }
-
-    fn instant_of_client_request_send(&mut self) -> Instant {
-        self.instant_of_internal_event()
-    }
-
-    fn instant_of_client_request_arrival(&mut self) -> Instant {
-        self.instant_of_internal_event()
-    }
-
-    fn instant_of_p2p_request_send(&mut self) -> Instant {
-        self.instant_of_internal_event()
-    }
-
-    fn instant_of_p2p_request_arrival(&mut self) -> Instant {
-        self.instant_of_internal_event()
-    }
-}
-
 pub struct SimulatedActor<MsgT, HandlerT> {
     topology: Arc<Mutex<Topology>>,
     node_id: Arc<String>,
@@ -389,6 +174,272 @@ where
     }
 }
 
+type Topology = HashMap<String, Node>;
+
+pub struct Simulation {
+    topology: Arc<Mutex<Topology>>,
+    exited_actors: Arc<Mutex<Vec<Arc<String>>>>,
+    internal_events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
+    events_queue: Arc<Mutex<BinaryHeap<SimulationEventAtInstant>>>,
+    clock: Arc<Mutex<SimulatedClock>>,
+    random: ChaCha8Rng,
+    end_instant: Instant,
+    finished_cond: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl Simulation {
+    pub fn new(topology: Topology, start_instant: Instant, end_instant: Instant) -> Simulation {
+        Simulation {
+            topology: Arc::new(Mutex::new(topology)),
+            exited_actors: Arc::new(Mutex::new(Vec::new())),
+            internal_events_buffer: Arc::new(Mutex::new(Vec::new())),
+            events_queue: Arc::new(Mutex::new(BinaryHeap::new())),
+            clock: Arc::new(Mutex::new(SimulatedClock {
+                current_instant: start_instant,
+            })),
+            random: ChaCha8Rng::seed_from_u64(SEED),
+            end_instant,
+            finished_cond: Arc::new((Mutex::new(false), Condvar::new())),
+        }
+    }
+
+    pub fn client_send<Msg>(&mut self, to_node: String, message: Msg)
+    where
+        Msg: Send + 'static,
+    {
+        let instant = self.instant_of_client_request_send();
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant,
+                event: SimulationEvent::ClientSend {
+                    to_node: Arc::new(to_node),
+                    event: Box::new(message),
+                },
+            })
+    }
+
+    pub fn run(mut self) {
+        let instant = self.end_instant;
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant,
+                event: SimulationEvent::SimulationEnd,
+            });
+
+        while !self.events_queue.lock().unwrap().is_empty() {
+            let mut mutex_buffer = self.internal_events_buffer.lock().unwrap();
+            let mut events_buffer = Vec::new();
+            mem::swap(&mut *mutex_buffer, &mut events_buffer);
+            drop(mutex_buffer);
+            for event in events_buffer {
+                let instant = self.instant_of_internal_event();
+                self.events_queue
+                    .lock()
+                    .unwrap()
+                    .push(SimulationEventAtInstant {
+                        instant,
+                        event: SimulationEvent::Internal { event },
+                    })
+            }
+
+            let e = self.events_queue.lock().unwrap().pop().unwrap();
+            self.clock.lock().unwrap().current_instant = e.instant;
+
+            match e.event {
+                SimulationEvent::ClientSend { to_node, event } => {
+                    let client_request_arrival_instant = self.instant_of_client_request_arrival();
+                    self.events_queue
+                        .lock()
+                        .unwrap()
+                        .push(SimulationEventAtInstant {
+                            instant: client_request_arrival_instant,
+                            event: SimulationEvent::ClientRequest { to_node, event },
+                        })
+                }
+                SimulationEvent::ClientRequest { to_node, event } => {
+                    let internal_event_instant = self.instant_of_internal_event();
+                    let client_request_handler = self
+                        .topology
+                        .lock()
+                        .unwrap()
+                        .get(to_node.as_ref())
+                        .unwrap()
+                        .client_request_handler
+                        .as_ref()
+                        .expect("client request handler unset")
+                        .clone();
+                    self.events_queue
+                        .lock()
+                        .unwrap()
+                        .push(SimulationEventAtInstant {
+                            instant: internal_event_instant,
+                            event: SimulationEvent::Internal {
+                                event: InternalEvent {
+                                    node: to_node,
+                                    handler: client_request_handler,
+                                    event,
+                                    delay: None,
+                                },
+                            },
+                        })
+                }
+                SimulationEvent::P2PSend { to_node, event } => {
+                    let p2p_request_arrival_instant = self.instant_of_p2p_request_arrival();
+                    self.events_queue
+                        .lock()
+                        .unwrap()
+                        .push(SimulationEventAtInstant {
+                            instant: p2p_request_arrival_instant,
+                            event: SimulationEvent::P2PRequest {
+                                node: to_node,
+                                event,
+                            },
+                        });
+                }
+                SimulationEvent::P2PRequest { node, event } => {
+                    let internal_event_instant = self.instant_of_internal_event();
+                    let p2p_request_handler = self
+                        .topology
+                        .lock()
+                        .unwrap()
+                        .get(node.as_ref())
+                        .unwrap()
+                        .p2p_request_handler
+                        .as_ref()
+                        .expect("P2P request handler unset")
+                        .clone();
+                    self.events_queue
+                        .lock()
+                        .unwrap()
+                        .push(SimulationEventAtInstant {
+                            instant: internal_event_instant,
+                            event: SimulationEvent::Internal {
+                                event: InternalEvent {
+                                    node,
+                                    handler: p2p_request_handler,
+                                    event,
+                                    delay: None,
+                                },
+                            },
+                        })
+                }
+                SimulationEvent::Internal {
+                    event:
+                        InternalEvent {
+                            node,
+                            handler,
+                            event,
+                            delay,
+                        },
+                } => match delay {
+                    Some(duration) => {
+                        self.events_queue
+                            .lock()
+                            .unwrap()
+                            .push(SimulationEventAtInstant {
+                                instant: e.instant.add(duration),
+                                event: SimulationEvent::Internal {
+                                    event: InternalEvent {
+                                        node,
+                                        handler,
+                                        event,
+                                        delay: None,
+                                    },
+                                },
+                            })
+                    }
+                    None => {
+                        if self
+                            .exited_actors
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .any(|elem| *elem == handler)
+                        {
+                            panic!("Message sent to actor that has exited")
+                        }
+
+                        let topology = self.topology.lock().unwrap();
+                        let handler_arc = topology
+                            .get(node.as_ref())
+                            .expect("node not found")
+                            .all_handlers
+                            .get(&handler)
+                            .expect("handler not found");
+                        if let Some(control) = handler_arc
+                            .lock()
+                            .unwrap()
+                            .as_mut()
+                            .expect("handler not set")
+                            .receive_untyped(event)
+                            .expect("Found event targeting the wrong actor")
+                        {
+                            match control {
+                                bft_grid_core::ActorControl::Exit() => {
+                                    self.exited_actors.lock().unwrap().push(handler)
+                                }
+                            }
+                        };
+                    }
+                },
+                SimulationEvent::SimulationEnd => {
+                    let (finished_mutex, cvar) = &*self.finished_cond;
+                    let mut finished = finished_mutex.lock().unwrap();
+                    *finished = true;
+                    cvar.notify_all();
+                    break;
+                }
+            }
+        }
+    }
+
+    fn instant_of_internal_event(&mut self) -> Instant {
+        let pseudo_random_between_zero_and_one = self.random.next_u64() as f64 / u64::MAX as f64;
+        let pseudo_random_duration =
+            MAX_RANDOM_DURATION.mul_f64(pseudo_random_between_zero_and_one);
+        self.clock
+            .lock()
+            .unwrap()
+            .current_instant
+            .add(pseudo_random_duration)
+    }
+
+    fn instant_of_client_request_send(&mut self) -> Instant {
+        self.instant_of_internal_event()
+    }
+
+    fn instant_of_client_request_arrival(&mut self) -> Instant {
+        self.instant_of_internal_event()
+    }
+
+    fn instant_of_p2p_request_send(&mut self) -> Instant {
+        self.instant_of_internal_event()
+    }
+
+    fn instant_of_p2p_request_arrival(&mut self) -> Instant {
+        self.instant_of_internal_event()
+    }
+}
+
+impl Clone for Simulation {
+    fn clone(&self) -> Self {
+        Simulation {
+            topology: self.topology.clone(),
+            exited_actors: self.exited_actors.clone(),
+            internal_events_buffer: self.internal_events_buffer.clone(),
+            events_queue: self.events_queue.clone(),
+            clock: self.clock.clone(),
+            random: self.random.clone(),
+            end_instant: self.end_instant,
+            finished_cond: self.finished_cond.clone(),
+        }
+    }
+}
+
 impl ActorSystem for Simulation {
     type ActorRefT<
         MsgT: Send + 'static,
@@ -454,13 +505,16 @@ impl P2PNetwork for Simulation {
         MsgT: Send + 'static,
     {
         let instant = self.instant_of_p2p_request_send();
-        self.events_queue.push(SimulationEventAtInstant {
-            instant,
-            event: SimulationEvent::ClientSend {
-                to_node: Arc::new(to_node),
-                event: Box::new(message),
-            },
-        })
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant,
+                event: SimulationEvent::ClientSend {
+                    to_node: Arc::new(to_node),
+                    event: Box::new(message),
+                },
+            })
     }
 
     fn broadcast<MsgT>(&mut self, message: MsgT)
@@ -469,13 +523,16 @@ impl P2PNetwork for Simulation {
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {
-            self.events_queue.push(SimulationEventAtInstant {
-                instant,
-                event: SimulationEvent::ClientSend {
-                    to_node: Arc::new(node_name.clone()),
-                    event: Box::new(message.clone()),
-                },
-            })
+            self.events_queue
+                .lock()
+                .unwrap()
+                .push(SimulationEventAtInstant {
+                    instant,
+                    event: SimulationEvent::ClientSend {
+                        to_node: Arc::new(node_name.clone()),
+                        event: Box::new(message.clone()),
+                    },
+                })
         }
     }
 }

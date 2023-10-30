@@ -64,7 +64,7 @@ where
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
 }
 
-pub trait ActorSystem {
+pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
         MsgT: Send + 'static,

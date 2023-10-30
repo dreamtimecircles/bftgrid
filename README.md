@@ -4,10 +4,9 @@ An actor framework to implement and test BFT protocols.
 
 ## TODO before publishing
 
-- [ ] Support actors spawning actors
-- [ ] Multi-node simulation example
-- [ ] Support abstracting system construction code
+- [ ] Example of multi-node simulation
+- [ ] Example of abstracting system construction logic
 - [ ] Docs
-- [ ] Protocol implementation (at least toy one)
+- [ ] Protocol implementation (at least toy)
 - [ ] Unit tests
 - [ ] Simulation tests
