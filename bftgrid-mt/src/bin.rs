@@ -21,16 +21,35 @@ where
     spawn_count: u8,
 }
 
-struct Actor2<ActorSystemT>
+impl<ActorSystemT> Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem,
 {
-    actor_system_type: PhantomData<ActorSystemT>,
+    fn new(
+        self_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
+        actor_system: ActorSystemT,
+        actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
+    ) -> Actor1<ActorSystemT> {
+        Actor1 {
+            self_ref,
+            actor_system,
+            actor2_ref,
+            ping_count: 0,
+            spawn_count: 0,
+        }
+    }
 }
 
-impl<ActorSystemT> Actor2<ActorSystemT>
+struct Actor2<Actor1ActorSystemT>
 where
-    ActorSystemT: ActorSystem,
+    Actor1ActorSystemT: ActorSystem,
+{
+    actor_system_type: PhantomData<Actor1ActorSystemT>,
+}
+
+impl<Actor1ActorSystemT> Actor2<Actor1ActorSystemT>
+where
+    Actor1ActorSystemT: ActorSystem,
 {
     fn new() -> Self {
         Actor2 {
@@ -39,11 +58,11 @@ where
     }
 }
 
-impl<ActorSystemT> TypedHandler<'_> for Actor2<ActorSystemT>
+impl<Actor1ActorSystemT> TypedHandler<'_> for Actor2<Actor1ActorSystemT>
 where
-    ActorSystemT: ActorSystem + Send + 'static,
+    Actor1ActorSystemT: ActorSystem + Send + 'static,
 {
-    type MsgT = Actor1ToActor2<ActorSystemT>;
+    type MsgT = Actor1ToActor2<Actor1ActorSystemT>;
 
     fn receive(&mut self, mut msg: Self::MsgT) -> Option<ActorControl> {
         println!("Actor2 received ref, sending ping to it");
@@ -107,27 +126,74 @@ where
     }
 }
 
-fn main() {
-    let mut tokio_actor_system = TokioActorSystem::new();
-    let mut async_actor_ref = tokio_actor_system.create("node".into(), "actor2".into());
-    tokio_actor_system.set_handler(&mut async_actor_ref, Actor2::new());
-    let async_actor_ref2 = async_actor_ref.new_ref();
-    let mut thread_actor_system = ThreadActorSystem {};
-    let mut sync_actor_ref = thread_actor_system.create("node".into(), "actor1".into());
-    let sync_actor_ref2 = sync_actor_ref.new_ref();
-    thread_actor_system.set_handler(
-        &mut sync_actor_ref,
-        Actor1 {
-            self_ref: sync_actor_ref2,
-            actor_system: thread_actor_system.clone(),
-            actor2_ref: async_actor_ref2,
-            ping_count: 0,
-            spawn_count: 0,
-        },
+struct System<Actor1ActorSystemT, Actor2ActorSystemT>
+where
+    Actor1ActorSystemT: ActorSystem + Send + 'static,
+    Actor2ActorSystemT: ActorSystem + Send + 'static,
+{
+    actor1_ref: Actor1ActorSystemT::ActorRefT<(), Actor1<Actor1ActorSystemT>>,
+    actor2_ref: Actor2ActorSystemT::ActorRefT<
+        Actor1ToActor2<Actor1ActorSystemT>,
+        Actor2<Actor1ActorSystemT>,
+    >,
+    actor1_actor_system_type: PhantomData<Actor1ActorSystemT>,
+}
+
+impl<Actor1ActorSystemT, Actor2ActorSystemT> System<Actor1ActorSystemT, Actor2ActorSystemT>
+where
+    Actor1ActorSystemT: ActorSystem + Send + 'static,
+    Actor2ActorSystemT: ActorSystem + Send + 'static,
+{
+    fn new(
+        actor1_ref: Actor1ActorSystemT::ActorRefT<(), Actor1<Actor1ActorSystemT>>,
+        actor2_ref: Actor2ActorSystemT::ActorRefT<
+            Actor1ToActor2<Actor1ActorSystemT>,
+            Actor2<Actor1ActorSystemT>,
+        >,
+    ) -> Self {
+        System {
+            actor1_ref,
+            actor2_ref,
+            actor1_actor_system_type: PhantomData {},
+        }
+    }
+}
+
+fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
+    mut actor1_actor_system: Actor1ActorSystemT,
+    mut actor2_actor_system: Actor2ActorSystemT,
+) -> System<Actor1ActorSystemT, Actor2ActorSystemT>
+where
+    Actor1ActorSystemT: ActorSystem + Send + 'static,
+    Actor2ActorSystemT: ActorSystem + Send + 'static,
+{
+    let mut actor1_ref = actor1_actor_system.create("node".into(), "actor1".into());
+    let actor1_ref_copy = actor1_ref.new_ref();
+    let mut actor2_ref = actor2_actor_system.create("node".into(), "actor2".into());
+    let actor2_ref_copy = actor2_ref.new_ref();
+    actor2_actor_system.set_handler(&mut actor2_ref, Actor2::new());
+    actor1_actor_system.set_handler(
+        &mut actor1_ref,
+        Actor1::new(
+            actor1_ref_copy,
+            actor1_actor_system.clone(),
+            actor2_ref_copy,
+        ),
     );
-    sync_actor_ref.send((), None);
-    async_actor_ref.join();
+    System::new(actor1_ref, actor2_ref)
+}
+
+fn main() {
+    let thread_actor_system = ThreadActorSystem {};
+    let tokio_actor_system = TokioActorSystem::new();
+    let System {
+        mut actor1_ref,
+        actor2_ref,
+        ..
+    } = build_system(thread_actor_system, tokio_actor_system);
+    actor1_ref.send((), None);
+    actor2_ref.join();
     println!("Joined Actor2");
-    sync_actor_ref.join();
+    actor1_ref.join();
     println!("Joined Actor1");
 }
