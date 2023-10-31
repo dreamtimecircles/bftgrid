@@ -1,0 +1,14 @@
+[package]
+name = "bftgrid-example"
+version = "0.0.1"
+edition = "2021"
+authors = ["Fabio Tudone <fabtud@gmail.com>"]
+
+[dependencies]
+bftgrid-core = { path = "../bftgrid-core" }
+bftgrid-mt = { path = "../bftgrid-mt" }
+bftgrid-sim = { path = "../bftgrid-sim" }
+
+[[bin]]
+name = "bftgrid-example"
+path = "src/bin.rs"

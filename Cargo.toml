@@ -1,0 +1,3 @@
+[workspace]
+members = ["bftgrid-core", "bftgrid-mt", "bftgrid-sim", "bftgrid-example"]
+resolver = "2"
