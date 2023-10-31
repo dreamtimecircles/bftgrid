@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
-use bft_grid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
-use bft_grid_mt::{ThreadActorSystem, TokioActorSystem};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
 
 struct Actor1ToActor2<ActorSystemT>
 where

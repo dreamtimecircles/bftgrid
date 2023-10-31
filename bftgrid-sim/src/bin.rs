@@ -4,8 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bft_grid_core::{ActorControl, ActorRef, ActorSystem, TypedHandler};
-use bft_grid_sim::{Node, Simulation};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, TypedHandler};
+use bftgrid_sim::{Node, Simulation};
 
 struct TestHandler {}
 

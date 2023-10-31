@@ -34,10 +34,10 @@ pub trait UntypedHandler<'msg> {
     ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
 
-impl<'msg, Msg, HandlerT> UntypedHandler<'msg> for HandlerT
+impl<'msg, MsgT, HandlerT> UntypedHandler<'msg> for HandlerT
 where
-    Msg: 'msg,
-    HandlerT: TypedHandler<'msg, MsgT = Msg>,
+    MsgT: 'msg,
+    HandlerT: TypedHandler<'msg, MsgT = MsgT>,
 {
     fn receive_untyped(
         &mut self,
@@ -84,11 +84,16 @@ pub trait ActorSystem: Clone {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 }
 
 pub trait P2PNetwork {
-    fn send<MsgT: Send + 'static>(&mut self, message: MsgT, node: String);
-    fn broadcast<MsgT: Clone + Send + 'static>(&mut self, message: MsgT);
+    fn send<MsgT>(&mut self, message: MsgT, node: String)
+    where
+        MsgT: Send + 'static;
+
+    fn broadcast<MsgT>(&mut self, message: MsgT)
+    where
+        MsgT: Clone + Send + 'static;
 }

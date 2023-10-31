@@ -1,12 +1,13 @@
 # `bftgrid`
 
-An actor framework to implement and test BFT protocols.
+An actor-like framework to implement and test distributed protocols.
 
 ## TODO before publishing
 
-- [ ] Example of multi-node simulation
+- [ ] Networking
+- [ ] Multi-node example
 - [ ] Example of abstracting system construction logic
+- [ ] Example of same multi-node system running both simulated and prod
+- [ ] Logging
 - [ ] Docs
-- [ ] Protocol implementation (at least toy)
 - [ ] Unit tests
-- [ ] Simulation tests

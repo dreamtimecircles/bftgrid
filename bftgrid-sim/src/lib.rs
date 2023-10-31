@@ -9,7 +9,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bft_grid_core::{ActorRef, ActorSystem, Joinable, P2PNetwork, TypedHandler, UntypedHandler};
+use bftgrid_core::{
+    ActorControl, ActorRef, ActorSystem, Joinable, P2PNetwork, TypedHandler, UntypedHandler,
+};
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
@@ -203,9 +205,9 @@ impl Simulation {
         }
     }
 
-    pub fn client_send<Msg>(&mut self, to_node: String, message: Msg)
+    pub fn client_send<MsgT>(&mut self, to_node: String, message: MsgT)
     where
-        Msg: Send + 'static,
+        MsgT: Send + 'static,
     {
         let instant = self.instant_of_client_request_send();
         self.events_queue
@@ -379,7 +381,7 @@ impl Simulation {
                             .expect("Found event targeting the wrong actor")
                         {
                             match control {
-                                bft_grid_core::ActorControl::Exit() => {
+                                ActorControl::Exit() => {
                                     self.exited_actors.lock().unwrap().push(handler)
                                 }
                             }
@@ -487,7 +489,7 @@ impl ActorSystem for Simulation {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         let mut topology = self.topology.lock().unwrap();

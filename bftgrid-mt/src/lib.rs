@@ -9,7 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bft_grid_core::{ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
@@ -29,6 +29,7 @@ impl<OutputT> Joinable<OutputT> for TokioJoinable<OutputT> {
         self.join_handle.is_finished()
     }
 }
+
 pub struct TokioActor<MsgT, HandlerT>
 where
     MsgT: Send,
@@ -78,10 +79,7 @@ where
         })
     }
 
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>
-    where
-        Self: Sized,
-    {
+    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
         Box::new(TokioActor {
             runtime: self.runtime.clone(),
             tx: self.tx.clone(),
@@ -127,7 +125,7 @@ fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
 impl ActorSystem for TokioActorSystem {
     type ActorRefT<MsgT, HandlerT> = TokioActor<MsgT, HandlerT>
     where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn create<MsgT, HandlerT>(
@@ -136,7 +134,7 @@ impl ActorSystem for TokioActorSystem {
         _node_id: String,
     ) -> TokioActor<MsgT, HandlerT>
     where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
@@ -159,7 +157,7 @@ impl ActorSystem for TokioActorSystem {
                     Some(m) => {
                         if let Some(control) = current_handler.receive(m) {
                             match control {
-                                bft_grid_core::ActorControl::Exit() => {
+                                ActorControl::Exit() => {
                                     rx.close();
                                     handler_rx.close();
                                     notify_close(close_cond2);
@@ -179,11 +177,14 @@ impl ActorSystem for TokioActorSystem {
         }
     }
 
-    fn set_handler<MsgT: Send + 'static, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
+    fn set_handler<MsgT, HandlerT>(
         &mut self,
         actor_ref: &mut TokioActor<MsgT, HandlerT>,
         handler: HandlerT,
-    ) {
+    ) where
+        MsgT: Send + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    {
         actor_ref.handler_tx.send(handler).unwrap();
     }
 }
@@ -249,10 +250,7 @@ where
         })
     }
 
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>
-    where
-        Self: Sized,
-    {
+    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
         Box::new(ThreadActor {
             tx: self.tx.clone(),
             handler_tx: self.handler_tx.clone(),
@@ -272,7 +270,7 @@ impl Clone for ThreadActorSystem {
 impl ActorSystem for ThreadActorSystem {
     type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
     where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn create<MsgT, HandlerT>(
@@ -281,7 +279,7 @@ impl ActorSystem for ThreadActorSystem {
         _node_id: String,
     ) -> ThreadActor<MsgT, HandlerT>
     where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         let (tx, rx) = mpsc::channel();
@@ -302,7 +300,7 @@ impl ActorSystem for ThreadActorSystem {
                     Ok(m) => {
                         if let Some(control) = current_handler.receive(m) {
                             match control {
-                                bft_grid_core::ActorControl::Exit() => {
+                                ActorControl::Exit() => {
                                     notify_close(close_cond2);
                                     return;
                                 }
@@ -324,7 +322,7 @@ impl ActorSystem for ThreadActorSystem {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: 'static + Send,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
