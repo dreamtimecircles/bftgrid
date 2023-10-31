@@ -55,12 +55,12 @@ pub trait Joinable<Output> {
     fn is_finished(&mut self) -> bool;
 }
 
-pub trait ActorRef<MsgT, HandlerT>: Joinable<()> + Send
+pub trait ActorRef<MsgT, HandlerT>: Send
 where
     MsgT: 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
-    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>>;
+    fn send(&mut self, message: MsgT, delay: Option<Duration>);
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
 }
 

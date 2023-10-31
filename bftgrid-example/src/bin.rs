@@ -1,20 +1,21 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, thread, time::Duration};
 
 use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
 use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
 
 struct Actor1ToActor2<ActorSystemT>
 where
-    ActorSystemT: ActorSystem,
+    ActorSystemT: ActorSystem + Send,
 {
     pub actor1_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
 }
 
 struct Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem,
+    ActorSystemT: ActorSystem + Send,
 {
     self_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
+    node_id: String,
     actor_system: ActorSystemT,
     actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
     ping_count: u8,
@@ -23,15 +24,17 @@ where
 
 impl<ActorSystemT> Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem,
+    ActorSystemT: ActorSystem + Send,
 {
     fn new(
         self_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
+        node_id: String,
         actor_system: ActorSystemT,
         actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
     ) -> Actor1<ActorSystemT> {
         Actor1 {
             self_ref,
+            node_id,
             actor_system,
             actor2_ref,
             ping_count: 0,
@@ -49,7 +52,7 @@ where
 
 impl<Actor1ActorSystemT> Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem,
+    Actor1ActorSystemT: ActorSystem + Send,
 {
     fn new() -> Self {
         Actor2 {
@@ -102,20 +105,22 @@ where
                     println!("Actor1 spawning");
                     let mut new_ref = self
                         .actor_system
-                        .create::<(), Actor1<ActorSystemT>>("".into(), "".into());
+                        .create::<(), Actor1<ActorSystemT>>(self.node_id.clone(), self.spawn_count.to_string());
+                    println!("Actor1 setting handler");
                     self.actor_system.set_handler(
                         &mut new_ref,
                         Actor1 {
                             self_ref: self.self_ref.new_ref(),
+                            node_id: self.node_id.clone(),
                             actor_system: self.actor_system.clone(),
                             actor2_ref: self.actor2_ref.new_ref(),
                             ping_count: 3,
                             spawn_count: self.spawn_count + 1,
                         },
                     );
+                    println!("Actor1 sending");
                     new_ref.send((), None);
-                    println!("Actor1 joining");
-                    new_ref.join();
+                    println!("Actor1 done");
                 }
                 println!("Actor1 exiting");
                 Some(ActorControl::Exit())
@@ -176,6 +181,7 @@ where
         &mut actor1_ref,
         Actor1::new(
             actor1_ref_copy,
+            "node".into(),
             actor1_actor_system.clone(),
             actor2_ref_copy,
         ),
@@ -196,4 +202,34 @@ fn main() {
     println!("Joined Actor2");
     actor1_ref.join();
     println!("Joined Actor1");
+    thread::sleep(Duration::from_millis(100)); // For spawned actors to also complete
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::HashMap,
+        ops::Add,
+        time::{Duration, Instant},
+    };
+
+    use bftgrid_core::ActorRef;
+    use bftgrid_sim::{Node, Simulation};
+
+    use crate::{build_system, System};
+
+    #[test]
+    fn simulation() {
+        let mut topology = HashMap::new();
+        topology.insert("node".into(), Node::new());
+        let start = Instant::now();
+        let simulation =
+            Simulation::new(topology, start, start.add(Duration::from_secs(100)));
+        let System {
+            mut actor1_ref,
+            ..
+        } = build_system(simulation.clone(), simulation.clone());
+        actor1_ref.send((), None);
+        simulation.run();
+    }
 }

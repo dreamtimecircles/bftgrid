@@ -15,21 +15,6 @@ use tokio::{
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
 };
 
-struct TokioJoinable<OutputT> {
-    runtime: Arc<Runtime>,
-    join_handle: tokio::task::JoinHandle<OutputT>,
-}
-
-impl<OutputT> Joinable<OutputT> for TokioJoinable<OutputT> {
-    fn join(self) -> OutputT {
-        self.runtime.block_on(self.join_handle).unwrap()
-    }
-
-    fn is_finished(&mut self) -> bool {
-        self.join_handle.is_finished()
-    }
-}
-
 pub struct TokioActor<MsgT, HandlerT>
 where
     MsgT: Send,
@@ -66,17 +51,14 @@ where
     MsgT: Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
-    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
+    fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        Box::new(TokioJoinable {
-            runtime: self.runtime.clone(),
-            join_handle: self.runtime.spawn(async move {
-                if let Some(delay_duration) = delay {
-                    tokio::time::sleep(delay_duration).await;
-                }
-                sender.send(message).ok()
-            }),
-        })
+        self.runtime.spawn(async move {
+            if let Some(delay_duration) = delay {
+                tokio::time::sleep(delay_duration).await;
+            }
+            sender.send(message).ok()
+        });
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -189,20 +171,6 @@ impl ActorSystem for TokioActorSystem {
     }
 }
 
-struct ThreadJoinable<OutputT> {
-    join_handle: thread::JoinHandle<OutputT>,
-}
-
-impl<OutputT> Joinable<OutputT> for ThreadJoinable<OutputT> {
-    fn join(self) -> OutputT {
-        self.join_handle.join().unwrap()
-    }
-
-    fn is_finished(&mut self) -> bool {
-        self.join_handle.is_finished()
-    }
-}
-
 pub struct ThreadActor<MsgT, HandlerT>
 where
     MsgT: Send,
@@ -238,16 +206,14 @@ where
     MsgT: Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
-    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
+    fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        Box::new(ThreadJoinable {
-            join_handle: thread::spawn(move || {
+        thread::spawn(move || {
                 if let Some(delay_duration) = delay {
                     thread::sleep(delay_duration);
                 }
                 sender.send(message).ok()
-            }),
-        })
+            });
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {

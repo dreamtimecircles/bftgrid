@@ -4,14 +4,12 @@ use std::{
     marker::PhantomData,
     mem,
     ops::Add,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{
-    ActorControl, ActorRef, ActorSystem, Joinable, P2PNetwork, TypedHandler, UntypedHandler,
-};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandler};
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
@@ -114,36 +112,8 @@ pub struct SimulatedActor<MsgT, HandlerT> {
     name: Arc<String>,
     handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
     events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
-    simulation_finished_cond: Arc<(Mutex<bool>, Condvar)>,
     message_type: PhantomData<MsgT>,
     handler_type: PhantomData<HandlerT>,
-}
-
-struct Ready {}
-
-impl Joinable<Option<()>> for Ready {
-    fn join(self) -> Option<()> {
-        Some(())
-    }
-
-    fn is_finished(&mut self) -> bool {
-        true
-    }
-}
-
-impl<MsgT, HandlerT> Joinable<()> for SimulatedActor<MsgT, HandlerT> {
-    fn join(self) {
-        let (finished_mutex, cvar) = &*self.simulation_finished_cond;
-        let mut finished = finished_mutex.lock().unwrap();
-        while !*finished {
-            finished = cvar.wait(finished).unwrap();
-        }
-    }
-
-    fn is_finished(&mut self) -> bool {
-        let (finished_mutex, _) = &*self.simulation_finished_cond;
-        *finished_mutex.lock().unwrap()
-    }
 }
 
 #[async_trait]
@@ -152,14 +122,13 @@ where
     MsgT: Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
-    fn send(&mut self, message: MsgT, delay: Option<Duration>) -> Box<dyn Joinable<Option<()>>> {
+    fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         self.events_buffer.lock().unwrap().push(InternalEvent {
             node: self.node_id.clone(),
             handler: self.name.clone(),
             event: Box::new(message),
             delay,
         });
-        Box::new(Ready {})
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -169,7 +138,6 @@ where
             name: self.name.clone(),
             handler: self.handler.clone(),
             events_buffer: self.events_buffer.clone(),
-            simulation_finished_cond: self.simulation_finished_cond.clone(),
             message_type: self.message_type,
             handler_type: self.handler_type,
         })
@@ -186,7 +154,6 @@ pub struct Simulation {
     clock: Arc<Mutex<SimulatedClock>>,
     random: ChaCha8Rng,
     end_instant: Instant,
-    finished_cond: Arc<(Mutex<bool>, Condvar)>,
 }
 
 impl Simulation {
@@ -201,7 +168,6 @@ impl Simulation {
             })),
             random: ChaCha8Rng::seed_from_u64(SEED),
             end_instant,
-            finished_cond: Arc::new((Mutex::new(false), Condvar::new())),
         }
     }
 
@@ -352,7 +318,7 @@ impl Simulation {
                                         delay: None,
                                     },
                                 },
-                            })
+                            });
                     }
                     None => {
                         if self
@@ -365,14 +331,16 @@ impl Simulation {
                             panic!("Message sent to actor that has exited")
                         }
 
-                        let topology = self.topology.lock().unwrap();
-                        let handler_arc = topology
-                            .get(node.as_ref())
-                            .expect("node not found")
+                        let mut topology = self.topology.lock().unwrap();
+                        let mut removed_node =
+                            topology.remove(node.as_ref()).expect("node not found");
+                        let removed_handler_arc = removed_node
                             .all_handlers
-                            .get(&handler)
+                            .remove(&handler)
                             .expect("handler not found");
-                        if let Some(control) = handler_arc
+                        topology.insert((&*node).clone(), removed_node);
+                        drop(topology); // So that a handler with access to the actor system can lock it again in `crate` and/or `set_handler`
+                        if let Some(control) = removed_handler_arc
                             .lock()
                             .unwrap()
                             .as_mut()
@@ -385,16 +353,16 @@ impl Simulation {
                                     self.exited_actors.lock().unwrap().push(handler)
                                 }
                             }
+                        } else {
+                            let mut topology = self.topology.lock().unwrap();
+                            let mut removed_node =
+                                topology.remove(node.as_ref()).expect("node not found");
+                            removed_node.all_handlers.insert(handler, removed_handler_arc.clone());
+                            topology.insert((&*node).clone(), removed_node);
                         };
                     }
                 },
-                SimulationEvent::SimulationEnd => {
-                    let (finished_mutex, cvar) = &*self.finished_cond;
-                    let mut finished = finished_mutex.lock().unwrap();
-                    *finished = true;
-                    cvar.notify_all();
-                    break;
-                }
+                SimulationEvent::SimulationEnd => return,
             }
         }
     }
@@ -437,7 +405,6 @@ impl Clone for Simulation {
             clock: self.clock.clone(),
             random: self.random.clone(),
             end_instant: self.end_instant,
-            finished_cond: self.finished_cond.clone(),
         }
     }
 }
@@ -478,7 +445,6 @@ impl ActorSystem for Simulation {
             name: name_arc2,
             handler: handler_rc,
             events_buffer: self.internal_events_buffer.clone(),
-            simulation_finished_cond: self.finished_cond.clone(),
             message_type: PhantomData {},
             handler_type: PhantomData {},
         }
