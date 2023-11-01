@@ -1,20 +1,52 @@
 use std::{marker::PhantomData, thread, time::Duration};
 
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, BoxClone, Joinable, TypedHandler};
 use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
 
+#[derive(Debug)]
+struct Ping();
+
+impl BoxClone for Ping {
+    fn box_clone(&self) -> Box<dyn BoxClone + Send> {
+        Box::new(Ping())
+    }
+
+    fn any_clone(&self) -> Box<dyn std::any::Any + Send> {
+        Box::new(Ping())
+    }
+}
+
+#[derive(Debug)]
 struct Actor1ToActor2<ActorSystemT>
 where
     ActorSystemT: ActorSystem + Send,
 {
-    pub actor1_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
+    pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
 }
 
+impl<ActorSystemT> BoxClone for Actor1ToActor2<ActorSystemT>
+where
+    ActorSystemT: ActorSystem + Send + 'static,
+{
+    fn box_clone(&self) -> Box<dyn BoxClone + Send> {
+        Box::new(Actor1ToActor2 {
+            actor1_ref: self.actor1_ref.new_ref(),
+        })
+    }
+
+    fn any_clone(&self) -> Box<dyn std::any::Any + Send> {
+        Box::new(Actor1ToActor2 {
+            actor1_ref: self.actor1_ref.new_ref(),
+        })
+    }
+}
+
+#[derive(Debug)]
 struct Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem + Send,
 {
-    self_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
+    self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
     node_id: String,
     actor_system: ActorSystemT,
     actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
@@ -27,7 +59,7 @@ where
     ActorSystemT: ActorSystem + Send,
 {
     fn new(
-        self_ref: Box<dyn ActorRef<(), Actor1<ActorSystemT>>>,
+        self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
         node_id: String,
         actor_system: ActorSystemT,
         actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
@@ -43,6 +75,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct Actor2<Actor1ActorSystemT>
 where
     Actor1ActorSystemT: ActorSystem,
@@ -69,7 +102,7 @@ where
 
     fn receive(&mut self, mut msg: Self::MsgT) -> Option<ActorControl> {
         println!("Actor2 received ref, sending ping to it");
-        msg.actor1_ref.send((), None);
+        msg.actor1_ref.send(Ping(), None);
         println!("Actor2 sent ping, exiting");
         Some(ActorControl::Exit())
     }
@@ -79,9 +112,9 @@ impl<ActorSystemT> TypedHandler<'_> for Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem + Send + 'static,
 {
-    type MsgT = ();
+    type MsgT = Ping;
 
-    fn receive(&mut self, _msg: ()) -> Option<ActorControl> {
+    fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
             0 => {
                 println!("Actor1 received first ping, sending ref to Actor2");
@@ -96,16 +129,17 @@ where
             }
             1 => {
                 println!("Actor1 received second ping, self-pinging");
-                self.self_ref.send((), None);
+                self.self_ref.send(Ping(), None);
                 None
             }
             _ => {
                 println!("Actor1 received third ping");
                 if self.spawn_count < 1 {
                     println!("Actor1 spawning");
-                    let mut new_ref = self
-                        .actor_system
-                        .create::<(), Actor1<ActorSystemT>>(self.node_id.clone(), self.spawn_count.to_string());
+                    let mut new_ref = self.actor_system.create::<Ping, Actor1<ActorSystemT>>(
+                        self.node_id.clone(),
+                        self.spawn_count.to_string(),
+                    );
                     println!("Actor1 setting handler");
                     self.actor_system.set_handler(
                         &mut new_ref,
@@ -119,7 +153,7 @@ where
                         },
                     );
                     println!("Actor1 sending");
-                    new_ref.send((), None);
+                    new_ref.send(Ping(), None);
                     println!("Actor1 done");
                 }
                 println!("Actor1 exiting");
@@ -136,7 +170,7 @@ where
     Actor1ActorSystemT: ActorSystem + Send + 'static,
     Actor2ActorSystemT: ActorSystem + Send + 'static,
 {
-    actor1_ref: Actor1ActorSystemT::ActorRefT<(), Actor1<Actor1ActorSystemT>>,
+    actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
     actor2_ref: Actor2ActorSystemT::ActorRefT<
         Actor1ToActor2<Actor1ActorSystemT>,
         Actor2<Actor1ActorSystemT>,
@@ -150,7 +184,7 @@ where
     Actor2ActorSystemT: ActorSystem + Send + 'static,
 {
     fn new(
-        actor1_ref: Actor1ActorSystemT::ActorRefT<(), Actor1<Actor1ActorSystemT>>,
+        actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
         actor2_ref: Actor2ActorSystemT::ActorRefT<
             Actor1ToActor2<Actor1ActorSystemT>,
             Actor2<Actor1ActorSystemT>,
@@ -197,7 +231,7 @@ fn main() {
         actor2_ref,
         ..
     } = build_system(thread_actor_system, tokio_actor_system);
-    actor1_ref.send((), None);
+    actor1_ref.send(Ping(), None);
     actor2_ref.join();
     println!("Joined Actor2");
     actor1_ref.join();
@@ -216,20 +250,17 @@ mod tests {
     use bftgrid_core::ActorRef;
     use bftgrid_sim::{Node, Simulation};
 
-    use crate::{build_system, System};
+    use crate::{build_system, Ping, System};
 
     #[test]
     fn simulation() {
         let mut topology = HashMap::new();
         topology.insert("node".into(), Node::new());
         let start = Instant::now();
-        let simulation =
-            Simulation::new(topology, start, start.add(Duration::from_secs(100)));
-        let System {
-            mut actor1_ref,
-            ..
-        } = build_system(simulation.clone(), simulation.clone());
-        actor1_ref.send((), None);
-        simulation.run();
+        let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
+        let System { mut actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
+        actor1_ref.send(Ping(), None);
+        let history = simulation.run();
+        println!("{:?}", history);
     }
 }
