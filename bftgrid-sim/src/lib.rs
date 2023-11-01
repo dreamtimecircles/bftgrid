@@ -1,5 +1,4 @@
 use std::{
-    any::Any,
     collections::{BinaryHeap, HashMap},
     marker::PhantomData,
     mem,
@@ -9,7 +8,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandler};
+use bftgrid_core::{
+    ActorControl, ActorRef, ActorSystem, BoxClone, P2PNetwork, TypedHandler, UntypedHandler,
+};
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
@@ -22,33 +23,46 @@ pub struct SimulatedClock {
     current_instant: Instant,
 }
 
+#[derive(Debug)]
 pub struct InternalEvent {
     node: Arc<String>,
     handler: Arc<String>,
-    event: Box<dyn Any + Send>,
+    event: Box<dyn BoxClone + Send>,
     delay: Option<Duration>,
 }
 
+impl Clone for InternalEvent {
+    fn clone(&self) -> Self {
+        Self {
+            node: self.node.clone(),
+            handler: self.handler.clone(),
+            event: self.event.box_clone(),
+            delay: self.delay,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum SimulationEvent {
     ClientSend {
         // Injected before the simulation starts, is assigned an instant and reinjected as ClientRequest
         to_node: Arc<String>,
-        event: Box<dyn Any + Send>,
+        event: Box<dyn BoxClone + Send>,
     },
     ClientRequest {
         // Sent as internal event to a node's client_request_handler
         to_node: Arc<String>,
-        event: Box<dyn Any + Send>,
+        event: Box<dyn BoxClone + Send>,
     },
     P2PSend {
         // Produced by the simulated network, is assigned an instant and reinjected as P2PRequest
         to_node: Arc<String>,
-        event: Box<dyn Any + Send>,
+        event: Box<dyn BoxClone + Send>,
     },
     P2PRequest {
         // Sent as internal event to a node's p2p_request_handler
         node: Arc<String>,
-        event: Box<dyn Any + Send>,
+        event: Box<dyn BoxClone + Send>,
     },
     Internal {
         // Produced by internal modules for internal modules
@@ -57,9 +71,46 @@ pub enum SimulationEvent {
     SimulationEnd,
 }
 
+impl Clone for SimulationEvent {
+    fn clone(&self) -> Self {
+        match self {
+            Self::ClientSend { to_node, event } => Self::ClientSend {
+                to_node: to_node.clone(),
+                event: event.box_clone(),
+            },
+            Self::ClientRequest { to_node, event } => Self::ClientRequest {
+                to_node: to_node.clone(),
+                event: event.box_clone(),
+            },
+            Self::P2PSend { to_node, event } => Self::P2PSend {
+                to_node: to_node.clone(),
+                event: event.box_clone(),
+            },
+            Self::P2PRequest { node, event } => Self::P2PRequest {
+                node: node.clone(),
+                event: event.box_clone(),
+            },
+            Self::Internal { event } => Self::Internal {
+                event: event.clone(),
+            },
+            Self::SimulationEnd => Self::SimulationEnd,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct SimulationEventAtInstant {
     instant: Instant,
     event: SimulationEvent,
+}
+
+impl Clone for SimulationEventAtInstant {
+    fn clone(&self) -> Self {
+        Self {
+            instant: self.instant,
+            event: self.event.clone(),
+        }
+    }
 }
 
 impl PartialEq for SimulationEventAtInstant {
@@ -84,6 +135,7 @@ impl Ord for SimulationEventAtInstant {
 
 type UntypedHandlerBox = Box<dyn UntypedHandler<'static> + Send>;
 
+#[derive(Debug)]
 pub struct Node {
     client_request_handler: Option<Arc<String>>,
     p2p_request_handler: Option<Arc<String>>,
@@ -116,10 +168,19 @@ pub struct SimulatedActor<MsgT, HandlerT> {
     handler_type: PhantomData<HandlerT>,
 }
 
+impl<MsgT, HandlerT> std::fmt::Debug for SimulatedActor<MsgT, HandlerT> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SimulatedActor")
+            .field("node_id", &self.node_id)
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for SimulatedActor<MsgT, HandlerT>
 where
-    MsgT: Send + 'static,
+    MsgT: BoxClone + Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
@@ -173,7 +234,7 @@ impl Simulation {
 
     pub fn client_send<MsgT>(&mut self, to_node: String, message: MsgT)
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
     {
         let instant = self.instant_of_client_request_send();
         self.events_queue
@@ -188,13 +249,13 @@ impl Simulation {
             })
     }
 
-    pub fn run(mut self) {
-        let instant = self.end_instant;
+    pub fn run(mut self) -> Vec<SimulationEventAtInstant> {
+        let mut result = Vec::new();
         self.events_queue
             .lock()
             .unwrap()
             .push(SimulationEventAtInstant {
-                instant,
+                instant: self.end_instant,
                 event: SimulationEvent::SimulationEnd,
             });
 
@@ -215,6 +276,8 @@ impl Simulation {
             }
 
             let e = self.events_queue.lock().unwrap().pop().unwrap();
+            let e_clone = e.clone();
+            result.push(e_clone);
             self.clock.lock().unwrap().current_instant = e.instant;
 
             match e.event {
@@ -338,14 +401,14 @@ impl Simulation {
                             .all_handlers
                             .remove(&handler)
                             .expect("handler not found");
-                        topology.insert((&*node).clone(), removed_node);
+                        topology.insert((*node).clone(), removed_node);
                         drop(topology); // So that a handler with access to the actor system can lock it again in `crate` and/or `set_handler`
                         if let Some(control) = removed_handler_arc
                             .lock()
                             .unwrap()
                             .as_mut()
                             .expect("handler not set")
-                            .receive_untyped(event)
+                            .receive_untyped(event.any_clone())
                             .expect("Found event targeting the wrong actor")
                         {
                             match control {
@@ -357,14 +420,17 @@ impl Simulation {
                             let mut topology = self.topology.lock().unwrap();
                             let mut removed_node =
                                 topology.remove(node.as_ref()).expect("node not found");
-                            removed_node.all_handlers.insert(handler, removed_handler_arc.clone());
-                            topology.insert((&*node).clone(), removed_node);
+                            removed_node
+                                .all_handlers
+                                .insert(handler, removed_handler_arc.clone());
+                            topology.insert((*node).clone(), removed_node);
                         };
                     }
                 },
-                SimulationEvent::SimulationEnd => return,
+                SimulationEvent::SimulationEnd => break,
             }
         }
+        result
     }
 
     fn instant_of_internal_event(&mut self) -> Instant {
@@ -409,9 +475,19 @@ impl Clone for Simulation {
     }
 }
 
+impl std::fmt::Debug for Simulation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Simulation")
+            .field("topology", &self.topology)
+            .field("random", &self.random)
+            .field("end_instant", &self.end_instant)
+            .finish()
+    }
+}
+
 impl ActorSystem for Simulation {
     type ActorRefT<
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     > = SimulatedActor<MsgT, HandlerT>;
 
@@ -455,7 +531,7 @@ impl ActorSystem for Simulation {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         let mut topology = self.topology.lock().unwrap();
@@ -470,7 +546,7 @@ impl ActorSystem for Simulation {
 impl P2PNetwork for Simulation {
     fn send<MsgT>(&mut self, message: MsgT, to_node: String)
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -487,7 +563,7 @@ impl P2PNetwork for Simulation {
 
     fn broadcast<MsgT>(&mut self, message: MsgT)
     where
-        MsgT: Clone + Send + 'static,
+        MsgT: BoxClone + Send + 'static,
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {
@@ -498,7 +574,7 @@ impl P2PNetwork for Simulation {
                     instant,
                     event: SimulationEvent::ClientSend {
                         to_node: Arc::new(node_name.clone()),
-                        event: Box::new(message.clone()),
+                        event: message.box_clone(),
                     },
                 })
         }

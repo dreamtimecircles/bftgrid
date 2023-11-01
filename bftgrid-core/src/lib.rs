@@ -9,8 +9,13 @@ pub enum ActorControl {
     Exit(),
 }
 
-pub trait TypedHandler<'msg> {
-    type MsgT: 'msg;
+pub trait BoxClone: std::fmt::Debug {
+    fn box_clone(&self) -> Box<dyn BoxClone + Send>;
+    fn any_clone(&self) -> Box<dyn Any + Send>;
+}
+
+pub trait TypedHandler<'msg>: std::fmt::Debug {
+    type MsgT: BoxClone + 'msg;
 
     fn receive(&mut self, message: Self::MsgT) -> Option<ActorControl>;
 }
@@ -27,7 +32,7 @@ impl Display for MessageNotSupported {
 
 impl Error for MessageNotSupported {}
 
-pub trait UntypedHandler<'msg> {
+pub trait UntypedHandler<'msg>: std::fmt::Debug {
     fn receive_untyped(
         &mut self,
         message: Box<dyn Any + 'msg>,
@@ -36,7 +41,7 @@ pub trait UntypedHandler<'msg> {
 
 impl<'msg, MsgT, HandlerT> UntypedHandler<'msg> for HandlerT
 where
-    MsgT: 'msg,
+    MsgT: BoxClone + 'msg,
     HandlerT: TypedHandler<'msg, MsgT = MsgT>,
 {
     fn receive_untyped(
@@ -55,19 +60,19 @@ pub trait Joinable<Output> {
     fn is_finished(&mut self) -> bool;
 }
 
-pub trait ActorRef<MsgT, HandlerT>: Send
+pub trait ActorRef<MsgT, HandlerT>: Send + std::fmt::Debug
 where
-    MsgT: 'static,
+    MsgT: BoxClone + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>);
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
 }
 
-pub trait ActorSystem: Clone {
+pub trait ActorSystem: Clone + std::fmt::Debug {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn create<MsgT, HandlerT>(
@@ -76,7 +81,7 @@ pub trait ActorSystem: Clone {
         name: String,
     ) -> Self::ActorRefT<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn set_handler<MsgT, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
@@ -84,16 +89,16 @@ pub trait ActorSystem: Clone {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 }
 
 pub trait P2PNetwork {
     fn send<MsgT>(&mut self, message: MsgT, node: String)
     where
-        MsgT: Send + 'static;
+        MsgT: BoxClone + Send + 'static;
 
     fn broadcast<MsgT>(&mut self, message: MsgT)
     where
-        MsgT: Clone + Send + 'static;
+        MsgT: BoxClone + Send + 'static;
 }

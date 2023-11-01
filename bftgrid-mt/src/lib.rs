@@ -9,15 +9,16 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, BoxClone, Joinable, TypedHandler};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
 };
 
+#[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
 where
-    MsgT: Send,
+    MsgT: BoxClone + Send,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     runtime: Arc<Runtime>,
@@ -28,7 +29,7 @@ where
 
 impl<MsgT, HandlerT> Joinable<()> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: Send + 'static,
+    MsgT: BoxClone + Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn join(self) {
@@ -48,7 +49,7 @@ where
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: Send + 'static,
+    MsgT: BoxClone + Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
@@ -71,6 +72,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct TokioActorSystem {
     runtime: Arc<Runtime>,
 }
@@ -107,7 +109,7 @@ fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
 impl ActorSystem for TokioActorSystem {
     type ActorRefT<MsgT, HandlerT> = TokioActor<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn create<MsgT, HandlerT>(
@@ -116,7 +118,7 @@ impl ActorSystem for TokioActorSystem {
         _node_id: String,
     ) -> TokioActor<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
@@ -164,13 +166,14 @@ impl ActorSystem for TokioActorSystem {
         actor_ref: &mut TokioActor<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
     }
 }
 
+#[derive(Debug)]
 pub struct ThreadActor<MsgT, HandlerT>
 where
     MsgT: Send,
@@ -203,17 +206,17 @@ where
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for ThreadActor<MsgT, HandlerT>
 where
-    MsgT: Send + 'static,
+    MsgT: BoxClone + Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
         thread::spawn(move || {
-                if let Some(delay_duration) = delay {
-                    thread::sleep(delay_duration);
-                }
-                sender.send(message).ok()
-            });
+            if let Some(delay_duration) = delay {
+                thread::sleep(delay_duration);
+            }
+            sender.send(message).ok()
+        });
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -225,6 +228,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct ThreadActorSystem {}
 
 impl Clone for ThreadActorSystem {
@@ -236,7 +240,7 @@ impl Clone for ThreadActorSystem {
 impl ActorSystem for ThreadActorSystem {
     type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
 
     fn create<MsgT, HandlerT>(
@@ -288,7 +292,7 @@ impl ActorSystem for ThreadActorSystem {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: Send + 'static,
+        MsgT: BoxClone + Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
