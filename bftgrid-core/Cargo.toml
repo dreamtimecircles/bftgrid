@@ -3,3 +3,7 @@ name = "bftgrid-core"
 version = "0.0.1"
 edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
+
+[dependencies]
+dyn-clone = "1.0.11"
+downcast-rs = "1.2.0"

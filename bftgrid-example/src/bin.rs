@@ -1,50 +1,28 @@
 use std::{marker::PhantomData, thread, time::Duration};
 
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, BoxClone, Joinable, TypedHandler};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler, ActorMsg};
 use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Ping();
+impl ActorMsg for Ping {}
 
-impl BoxClone for Ping {
-    fn box_clone(&self) -> Box<dyn BoxClone + Send> {
-        Box::new(Ping())
-    }
-
-    fn any_clone(&self) -> Box<dyn std::any::Any + Send> {
-        Box::new(Ping())
-    }
-}
-
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Actor1ToActor2<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + Send,
+    ActorSystemT: ActorSystem + 'static,
 {
     pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
 }
-
-impl<ActorSystemT> BoxClone for Actor1ToActor2<ActorSystemT>
+impl <ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + Send + 'static,
-{
-    fn box_clone(&self) -> Box<dyn BoxClone + Send> {
-        Box::new(Actor1ToActor2 {
-            actor1_ref: self.actor1_ref.new_ref(),
-        })
-    }
-
-    fn any_clone(&self) -> Box<dyn std::any::Any + Send> {
-        Box::new(Actor1ToActor2 {
-            actor1_ref: self.actor1_ref.new_ref(),
-        })
-    }
-}
+    ActorSystemT: ActorSystem + 'static
+{}
 
 #[derive(Debug)]
 struct Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + Send,
+    ActorSystemT: ActorSystem + 'static,
 {
     self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
     node_id: String,
@@ -56,7 +34,7 @@ where
 
 impl<ActorSystemT> Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + Send,
+    ActorSystemT: ActorSystem,
 {
     fn new(
         self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
@@ -85,7 +63,7 @@ where
 
 impl<Actor1ActorSystemT> Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + Send,
+    Actor1ActorSystemT: ActorSystem,
 {
     fn new() -> Self {
         Actor2 {
@@ -96,7 +74,7 @@ where
 
 impl<Actor1ActorSystemT> TypedHandler<'_> for Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + Send + 'static,
+    Actor1ActorSystemT: ActorSystem + 'static,
 {
     type MsgT = Actor1ToActor2<Actor1ActorSystemT>;
 
@@ -110,7 +88,7 @@ where
 
 impl<ActorSystemT> TypedHandler<'_> for Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + Send + 'static,
+    ActorSystemT: ActorSystem + 'static,
 {
     type MsgT = Ping;
 
@@ -129,7 +107,7 @@ where
             }
             1 => {
                 println!("Actor1 received second ping, self-pinging");
-                self.self_ref.send(Ping(), None);
+                self.self_ref.send(Ping(), None); 
                 None
             }
             _ => {
@@ -167,8 +145,8 @@ where
 
 struct System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + Send + 'static,
-    Actor2ActorSystemT: ActorSystem + Send + 'static,
+    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor2ActorSystemT: ActorSystem + 'static,
 {
     actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
     actor2_ref: Actor2ActorSystemT::ActorRefT<
@@ -180,8 +158,8 @@ where
 
 impl<Actor1ActorSystemT, Actor2ActorSystemT> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + Send + 'static,
-    Actor2ActorSystemT: ActorSystem + Send + 'static,
+    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor2ActorSystemT: ActorSystem + 'static,
 {
     fn new(
         actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
@@ -203,8 +181,8 @@ fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
     mut actor2_actor_system: Actor2ActorSystemT,
 ) -> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + Send + 'static,
-    Actor2ActorSystemT: ActorSystem + Send + 'static,
+    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor2ActorSystemT: ActorSystem + 'static,
 {
     let mut actor1_ref = actor1_actor_system.create("node".into(), "actor1".into());
     let actor1_ref_copy = actor1_ref.new_ref();
