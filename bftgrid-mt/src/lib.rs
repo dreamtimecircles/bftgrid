@@ -1,27 +1,30 @@
 use std::{
+    fmt::Debug,
+    mem,
     sync::mpsc,
     sync::{
         mpsc::{RecvError, Sender},
         Arc, Condvar, Mutex,
     },
-    thread::{self},
-    time::Duration, fmt::Debug,
+    thread::{self, JoinHandle as ThreadJoinHandle},
+    time::Duration,
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler, ActorMsg};
+use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
+    task::JoinHandle as TokioJoinHandle,
 };
 
 #[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
 where
-    MsgT: Send,
+    MsgT: ActorMsg,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
-    runtime: Arc<Runtime>,
+    actor_system: TokioActorSystem,
     tx: TUnboundedSender<MsgT>,
     handler_tx: TUnboundedSender<HandlerT>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
@@ -29,7 +32,7 @@ where
 
 impl<MsgT, HandlerT> Joinable<()> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: Send + 'static,
+    MsgT: ActorMsg + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn join(self) {
@@ -46,6 +49,25 @@ where
     }
 }
 
+#[derive(Debug)]
+struct TokioJoinable<T> {
+    runtime: Arc<Runtime>,
+    underlying: TokioJoinHandle<T>,
+}
+
+impl<T> Joinable<T> for TokioJoinable<T>
+where
+    T: Debug + Send,
+{
+    fn join(self) -> T {
+        self.runtime.block_on(self.underlying).unwrap()
+    }
+
+    fn is_finished(&mut self) -> bool {
+        self.underlying.is_finished()
+    }
+}
+
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
 where
@@ -54,17 +76,20 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        self.runtime.spawn(async move {
-            if let Some(delay_duration) = delay {
-                tokio::time::sleep(delay_duration).await;
-            }
-            sender.send(message).ok()
+        self.actor_system.tasks.lock().unwrap().push(TokioJoinable {
+            runtime: self.actor_system.runtime.clone(),
+            underlying: self.actor_system.runtime.spawn(async move {
+                if let Some(delay_duration) = delay {
+                    tokio::time::sleep(delay_duration).await;
+                }
+                sender.send(message).ok().unwrap()
+            }),
         });
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
         Box::new(TokioActor {
-            runtime: self.runtime.clone(),
+            actor_system: self.actor_system.clone(),
             tx: self.tx.clone(),
             handler_tx: self.handler_tx.clone(),
             close_cond: self.close_cond.clone(),
@@ -72,23 +97,17 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TokioActorSystem {
     runtime: Arc<Runtime>,
-}
-
-impl Clone for TokioActorSystem {
-    fn clone(&self) -> Self {
-        TokioActorSystem {
-            runtime: self.runtime.clone(),
-        }
-    }
+    tasks: Arc<Mutex<Vec<TokioJoinable<()>>>>,
 }
 
 impl TokioActorSystem {
     pub fn new() -> Self {
         TokioActorSystem {
             runtime: Arc::new(Runtime::new().unwrap()),
+            tasks: Default::default(),
         }
     }
 }
@@ -96,6 +115,26 @@ impl TokioActorSystem {
 impl Default for TokioActorSystem {
     fn default() -> Self {
         TokioActorSystem::new()
+    }
+}
+
+impl Joinable<()> for TokioActorSystem {
+    fn join(self) {
+        let mut locked_tasks = self.tasks.lock().unwrap();
+        let mut tasks = vec![];
+        mem::swap(&mut *locked_tasks, &mut tasks);
+        drop(locked_tasks); // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        for t in tasks {
+            t.join();
+        }
+    }
+
+    fn is_finished(&mut self) -> bool {
+        self.tasks
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .all(|h| h.is_finished())
     }
 }
 
@@ -118,43 +157,46 @@ impl ActorSystem for TokioActorSystem {
         _node_id: String,
     ) -> TokioActor<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
+        MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<HandlerT>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
-        self.runtime.spawn(async move {
-            let mut current_handler = handler_rx.recv().await.unwrap();
-            loop {
-                if let Ok(new_handler) = handler_rx.try_recv() {
-                    current_handler = new_handler;
-                }
-                match rx.recv().await {
-                    None => {
-                        rx.close();
-                        handler_rx.close();
-                        notify_close(close_cond2);
-                        return;
+        self.tasks.lock().unwrap().push(TokioJoinable {
+            runtime: self.runtime.clone(),
+            underlying: self.runtime.spawn(async move {
+                let mut current_handler = handler_rx.recv().await.unwrap();
+                loop {
+                    if let Ok(new_handler) = handler_rx.try_recv() {
+                        current_handler = new_handler;
                     }
-                    Some(m) => {
-                        if let Some(control) = current_handler.receive(m) {
-                            match control {
-                                ActorControl::Exit() => {
-                                    rx.close();
-                                    handler_rx.close();
-                                    notify_close(close_cond2);
-                                    return;
+                    match rx.recv().await {
+                        None => {
+                            rx.close();
+                            handler_rx.close();
+                            notify_close(close_cond2);
+                            return
+                        }
+                        Some(m) => {
+                            if let Some(control) = current_handler.receive(m) {
+                                match control {
+                                    ActorControl::Exit() => {
+                                        rx.close();
+                                        handler_rx.close();
+                                        notify_close(close_cond2);
+                                        return
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
+            }),
         });
         TokioActor {
-            runtime: self.runtime.clone(),
+            actor_system: self.clone(),
             tx,
             handler_tx,
             close_cond,
@@ -166,10 +208,28 @@ impl ActorSystem for TokioActorSystem {
         actor_ref: &mut TokioActor<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: Send + 'static,
+        MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
+    }
+}
+
+#[derive(Debug)]
+struct ThreadJoinable<T> {
+    underlying: ThreadJoinHandle<T>,
+}
+
+impl<T> Joinable<T> for ThreadJoinable<T>
+where
+    T: Debug + Send,
+{
+    fn join(self) -> T {
+        self.underlying.join().unwrap()
+    }
+
+    fn is_finished(&mut self) -> bool {
+        self.underlying.is_finished()
     }
 }
 
@@ -179,6 +239,7 @@ where
     MsgT: ActorMsg,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
+    actor_system: ThreadActorSystem,
     tx: Sender<MsgT>,
     handler_tx: Sender<HandlerT>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
@@ -211,16 +272,23 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        thread::spawn(move || {
-            if let Some(delay_duration) = delay {
-                thread::sleep(delay_duration);
-            }
-            sender.send(message).ok()
-        });
+        self.actor_system
+            .tasks
+            .lock()
+            .unwrap()
+            .push(ThreadJoinable {
+                underlying: thread::spawn(move || {
+                    if let Some(delay_duration) = delay {
+                        thread::sleep(delay_duration);
+                    }
+                    sender.send(message).ok().unwrap()
+                }),
+            });
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
         Box::new(ThreadActor {
+            actor_system: self.actor_system.clone(),
             tx: self.tx.clone(),
             handler_tx: self.handler_tx.clone(),
             close_cond: self.close_cond.clone(),
@@ -228,12 +296,42 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct ThreadActorSystem {}
+#[derive(Clone, Debug)]
+pub struct ThreadActorSystem {
+    tasks: Arc<Mutex<Vec<ThreadJoinable<()>>>>,
+}
 
-impl Clone for ThreadActorSystem {
-    fn clone(&self) -> Self {
-        ThreadActorSystem {}
+impl ThreadActorSystem {
+    pub fn new() -> Self {
+        ThreadActorSystem {
+            tasks: Default::default(),
+        }
+    }
+}
+
+impl Default for ThreadActorSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Joinable<()> for ThreadActorSystem {
+    fn join(self) {
+        let mut locked_tasks = self.tasks.lock().unwrap();
+        let mut tasks = vec![];
+        mem::swap(&mut *locked_tasks, &mut tasks);
+        drop(locked_tasks); // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        for t in tasks {
+            t.join();
+        }
+    }
+
+    fn is_finished(&mut self) -> bool {
+        self.tasks
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .all(|h| h.is_finished())
     }
 }
 
@@ -256,31 +354,34 @@ impl ActorSystem for ThreadActorSystem {
         let (handler_tx, handler_rx) = mpsc::channel::<HandlerT>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
-        thread::spawn(move || {
-            let mut current_handler = handler_rx.recv().unwrap();
-            loop {
-                if let Ok(new_handler) = handler_rx.try_recv() {
-                    current_handler = new_handler;
-                }
-                match rx.recv() {
-                    Err(RecvError) => {
-                        notify_close(close_cond2);
-                        return;
+        self.tasks.lock().unwrap().push(ThreadJoinable {
+            underlying: thread::spawn(move || {
+                let mut current_handler = handler_rx.recv().unwrap();
+                loop {
+                    if let Ok(new_handler) = handler_rx.try_recv() {
+                        current_handler = new_handler;
                     }
-                    Ok(m) => {
-                        if let Some(control) = current_handler.receive(m) {
-                            match control {
-                                ActorControl::Exit() => {
-                                    notify_close(close_cond2);
-                                    return;
+                    match rx.recv() {
+                        Err(RecvError) => {
+                            notify_close(close_cond2);
+                            return
+                        }
+                        Ok(m) => {
+                            if let Some(control) = current_handler.receive(m) {
+                                match control {
+                                    ActorControl::Exit() => {
+                                        notify_close(close_cond2);
+                                        return
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
+            }),
         });
         ThreadActor {
+            actor_system: self.clone(),
             tx,
             handler_tx,
             close_cond,

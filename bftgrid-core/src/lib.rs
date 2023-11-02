@@ -4,8 +4,8 @@ use std::{
     time::Duration,
 };
 
-use downcast_rs::{Downcast, impl_downcast};
-use dyn_clone::{DynClone, clone_trait_object};
+use downcast_rs::{impl_downcast, Downcast};
+use dyn_clone::{clone_trait_object, DynClone};
 
 pub trait ActorMsg: DynClone + Downcast + Send + Debug {}
 clone_trait_object!(ActorMsg);
@@ -56,7 +56,7 @@ where
     }
 }
 
-pub trait Joinable<Output> {
+pub trait Joinable<Output>: Send + Debug {
     fn join(self) -> Output;
     fn is_finished(&mut self) -> bool;
 }
@@ -70,10 +70,10 @@ where
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
 }
 
-impl <MsgT, HandlerT> Clone for Box<dyn ActorRef<MsgT, HandlerT>>
+impl<MsgT, HandlerT> Clone for Box<dyn ActorRef<MsgT, HandlerT>>
 where
     MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static
+    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn clone(&self) -> Self {
         self.new_ref()

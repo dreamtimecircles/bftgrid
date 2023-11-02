@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    ActorControl, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandler, ActorMsg,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandler,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -99,9 +99,9 @@ pub struct Node {
 impl Node {
     pub fn new() -> Self {
         Node {
-            client_request_handler: None,
-            p2p_request_handler: None,
-            all_handlers: HashMap::new(),
+            client_request_handler: Default::default(),
+            p2p_request_handler: Default::default(),
+            all_handlers: Default::default(),
         }
     }
 }
@@ -175,9 +175,9 @@ impl Simulation {
     pub fn new(topology: Topology, start_instant: Instant, end_instant: Instant) -> Simulation {
         Simulation {
             topology: Arc::new(Mutex::new(topology)),
-            exited_actors: Arc::new(Mutex::new(Vec::new())),
-            internal_events_buffer: Arc::new(Mutex::new(Vec::new())),
-            events_queue: Arc::new(Mutex::new(BinaryHeap::new())),
+            exited_actors: Default::default(),
+            internal_events_buffer: Default::default(),
+            events_queue: Default::default(),
             clock: Arc::new(Mutex::new(SimulatedClock {
                 current_instant: start_instant,
             })),
