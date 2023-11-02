@@ -1,6 +1,6 @@
-use std::{marker::PhantomData, thread, time::Duration};
+use std::marker::PhantomData;
 
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler, ActorMsg};
+use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
 use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
 
 #[derive(Clone, Debug)]
@@ -14,10 +14,10 @@ where
 {
     pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
 }
-impl <ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT>
-where
+impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
     ActorSystemT: ActorSystem + 'static
-{}
+{
+}
 
 #[derive(Debug)]
 struct Actor1<ActorSystemT>
@@ -107,7 +107,7 @@ where
             }
             1 => {
                 println!("Actor1 received second ping, self-pinging");
-                self.self_ref.send(Ping(), None); 
+                self.self_ref.send(Ping(), None);
                 None
             }
             _ => {
@@ -202,19 +202,20 @@ where
 }
 
 fn main() {
-    let thread_actor_system = ThreadActorSystem {};
+    let thread_actor_system = ThreadActorSystem::new();
     let tokio_actor_system = TokioActorSystem::new();
     let System {
         mut actor1_ref,
         actor2_ref,
         ..
-    } = build_system(thread_actor_system, tokio_actor_system);
+    } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
     actor1_ref.send(Ping(), None);
     actor2_ref.join();
     println!("Joined Actor2");
     actor1_ref.join();
     println!("Joined Actor1");
-    thread::sleep(Duration::from_millis(100)); // For spawned actors to also complete
+    tokio_actor_system.join();
+    thread_actor_system.join();
 }
 
 #[cfg(test)]
