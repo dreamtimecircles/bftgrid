@@ -5,11 +5,11 @@ use std::{
         Arc, Condvar, Mutex,
     },
     thread::{self},
-    time::Duration,
+    time::Duration, fmt::Debug,
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{ActorControl, ActorRef, ActorSystem, BoxClone, Joinable, TypedHandler};
+use bftgrid_core::{ActorControl, ActorRef, ActorSystem, Joinable, TypedHandler, ActorMsg};
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
@@ -18,7 +18,7 @@ use tokio::{
 #[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
 where
-    MsgT: BoxClone + Send,
+    MsgT: Send,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     runtime: Arc<Runtime>,
@@ -29,7 +29,7 @@ where
 
 impl<MsgT, HandlerT> Joinable<()> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: BoxClone + Send + 'static,
+    MsgT: Send + 'static,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn join(self) {
@@ -49,8 +49,8 @@ where
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: BoxClone + Send + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
+    MsgT: ActorMsg + 'static,
+    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
@@ -109,8 +109,8 @@ fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
 impl ActorSystem for TokioActorSystem {
     type ActorRefT<MsgT, HandlerT> = TokioActor<MsgT, HandlerT>
     where
-        MsgT: BoxClone + Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 
     fn create<MsgT, HandlerT>(
         &mut self,
@@ -118,8 +118,8 @@ impl ActorSystem for TokioActorSystem {
         _node_id: String,
     ) -> TokioActor<MsgT, HandlerT>
     where
-        MsgT: BoxClone + Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
+        MsgT: Send + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<HandlerT>();
@@ -166,7 +166,7 @@ impl ActorSystem for TokioActorSystem {
         actor_ref: &mut TokioActor<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: BoxClone + Send + 'static,
+        MsgT: Send + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
@@ -176,7 +176,7 @@ impl ActorSystem for TokioActorSystem {
 #[derive(Debug)]
 pub struct ThreadActor<MsgT, HandlerT>
 where
-    MsgT: Send,
+    MsgT: ActorMsg,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     tx: Sender<MsgT>,
@@ -186,7 +186,7 @@ where
 
 impl<MsgT, HandlerT> Joinable<()> for ThreadActor<MsgT, HandlerT>
 where
-    MsgT: Send,
+    MsgT: ActorMsg,
     HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn join(self) {
@@ -206,8 +206,8 @@ where
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for ThreadActor<MsgT, HandlerT>
 where
-    MsgT: BoxClone + Send + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
+    MsgT: ActorMsg + 'static,
+    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
@@ -240,8 +240,8 @@ impl Clone for ThreadActorSystem {
 impl ActorSystem for ThreadActorSystem {
     type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
     where
-        MsgT: BoxClone + Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static;
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 
     fn create<MsgT, HandlerT>(
         &mut self,
@@ -249,8 +249,8 @@ impl ActorSystem for ThreadActorSystem {
         _node_id: String,
     ) -> ThreadActor<MsgT, HandlerT>
     where
-        MsgT: Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         let (tx, rx) = mpsc::channel();
         let (handler_tx, handler_rx) = mpsc::channel::<HandlerT>();
@@ -292,8 +292,8 @@ impl ActorSystem for ThreadActorSystem {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: BoxClone + Send + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + Send + 'static,
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         actor_ref.handler_tx.send(handler).unwrap();
     }
