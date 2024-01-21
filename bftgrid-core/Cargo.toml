@@ -5,5 +5,5 @@ edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
-dyn-clone = "1.0.11"
+dyn-clone = "1.0.16"
 downcast-rs = "1.2.0"

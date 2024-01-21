@@ -14,6 +14,7 @@ where
 {
     pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
 }
+
 impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
     ActorSystemT: ActorSystem + 'static
 {
