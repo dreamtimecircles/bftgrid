@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::Debug,
     mem,
     sync::{
@@ -11,9 +12,9 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler, UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, P2PNetwork, TypedHandler,
+    UntypedHandlerBox,
 };
-use serde::{Deserialize, Deserializer, Serialize};
 use tokio::{
     net::UdpSocket,
     runtime::Runtime,
@@ -422,14 +423,13 @@ impl TokioNetworkNode {
         Ok(TokioNetworkNode { handler, socket })
     }
 
-    pub fn start<'de, MsgT, DeT, DeCT, const BUFFER_SIZE: usize>(
+    pub fn start<MsgT, DeT, const BUFFER_SIZE: usize>(
         self,
-        new_deserializer: DeCT,
+        deserializer: DeT,
     ) -> TokioJoinHandle<()>
     where
-        MsgT: ActorMsg + Serialize + Deserialize<'de>,
-        DeT: Deserializer<'de>,
-        DeCT: Fn(&mut [u8]) -> DeT + Send + 'static,
+        MsgT: ActorMsg,
+        DeT: Fn(&mut [u8]) -> anyhow::Result<MsgT> + Send + 'static,
     {
         tokio::spawn(async move {
             let mut data = [0u8; BUFFER_SIZE];
@@ -439,7 +439,7 @@ impl TokioNetworkNode {
                     .recv(&mut data[..])
                     .await
                     .unwrap_or_else(|e| panic!("Receive failed: {:?}", e));
-                let message = MsgT::deserialize(new_deserializer(&mut data[..valid_bytes]))
+                let message = deserializer(&mut data[..valid_bytes])
                     .unwrap_or_else(|e| panic!("Deserialization failed: {:?}", e));
                 if let Some(ActorControl::Exit()) = self
                     .handler
@@ -452,5 +452,75 @@ impl TokioNetworkNode {
                 }
             }
         })
+    }
+}
+
+pub struct TokioP2PNetwork {
+    sockets: Arc<HashMap<Arc<String>, UdpSocket>>,
+}
+
+impl TokioP2PNetwork {
+    pub async fn new(peers: Vec<String>) -> Self {
+        let v = peers.into_iter().map(|p| {
+            tokio::spawn(async move {
+                (
+                    Arc::new(p.clone()),
+                    UdpSocket::bind(p)
+                        .await
+                        .unwrap_or_else(|e| panic!("Unable to bind: {:?}", e)),
+                )
+            })
+        });
+        let sockets = Arc::new(
+            futures::future::join_all(v)
+                .await
+                .into_iter()
+                .map(|r| r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)))
+                .collect(),
+        );
+        TokioP2PNetwork { sockets }
+    }
+}
+
+impl P2PNetwork for TokioP2PNetwork {
+    fn send<'de, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+        &mut self,
+        message: Box<MsgT>,
+        serializer: Arc<SerializerT>,
+        node: Arc<String>,
+    ) where
+        MsgT: ActorMsg + Send + Sync + 'static,
+        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static,
+    {
+        let sockets_arc = self.sockets.clone();
+        let serializer_arc = serializer.clone();
+        tokio::spawn(async move {
+            let mut buffer = [0u8; BUFFER_SIZE];
+            let valid = serializer_arc(message, &mut buffer)
+                .unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
+            sockets_arc
+                .get(&node)
+                .expect("Node not found")
+                .send(&buffer[..valid])
+                .await
+                .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
+        });
+    }
+
+    fn broadcast<'de, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+        &mut self,
+        message: Box<MsgT>,
+        serializer: Arc<SerializerT>,
+    ) where
+        MsgT: ActorMsg + Send + Sync + 'static,
+        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static,
+    {
+        for node in self.sockets.clone().keys() {
+            self.send::<MsgT, SerializerT, BUFFER_SIZE>(
+                dyn_clone::clone_box(&*message),
+                serializer.clone(),
+                node.clone(),
+            )
+        }
     }
 }

@@ -1,12 +1,12 @@
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    sync::Arc,
     time::Duration,
 };
 
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::{clone_trait_object, DynClone};
-use serde::{Deserialize, Serialize};
 
 pub trait ActorMsg: DynClone + Downcast + Send + Debug {}
 clone_trait_object!(ActorMsg);
@@ -108,11 +108,20 @@ pub trait ActorSystem: Clone + Send + Debug {
 }
 
 pub trait P2PNetwork {
-    fn send<'de, MsgT>(&mut self, message: MsgT, node: String)
-    where
-        MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static;
+    fn send<MsgT, SerializerT, const BUFFER_SIZE: usize>(
+        &mut self,
+        message: Box<MsgT>,
+        serializer: Arc<SerializerT>,
+        node: Arc<String>,
+    ) where
+        MsgT: ActorMsg + Send + Sync + 'static,
+        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static;
 
-    fn broadcast<'de, MsgT>(&mut self, message: MsgT)
-    where
-        MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static;
+    fn broadcast<MsgT, SerializerT, const BUFFER_SIZE: usize>(
+        &mut self,
+        message: Box<MsgT>,
+        serializer: Arc<SerializerT>,
+    ) where
+        MsgT: ActorMsg + Send + Sync + 'static,
+        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static;
 }
