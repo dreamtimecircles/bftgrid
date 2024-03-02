@@ -410,13 +410,13 @@ impl ActorSystem for ThreadActorSystem {
 }
 
 pub struct TokioNetworkNode {
-    handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
+    handler: Arc<Mutex<UntypedHandlerBox>>,
     socket: UdpSocket,
 }
 
 impl TokioNetworkNode {
     pub async fn new(
-        handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
+        handler: Arc<Mutex<UntypedHandlerBox>>,
         socket: UdpSocket,
     ) -> Result<Self, ()> {
         Ok(TokioNetworkNode { handler, socket })
@@ -445,8 +445,6 @@ impl TokioNetworkNode {
                     .handler
                     .lock()
                     .expect("Lock failed (poisoned)")
-                    .as_mut()
-                    .expect("P2P handler unset")
                     .receive_untyped(Box::new(message))
                     .expect("Unsupported message")
                     .is_some()
