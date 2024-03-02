@@ -456,7 +456,7 @@ impl TokioNetworkNode {
 }
 
 pub struct TokioP2PNetwork {
-    sockets: Arc<HashMap<Arc<String>, UdpSocket>>,
+    sockets: HashMap<Arc<String>, UdpSocket>,
 }
 
 impl TokioP2PNetwork {
@@ -471,56 +471,73 @@ impl TokioP2PNetwork {
                 )
             })
         });
-        let sockets = Arc::new(
-            futures::future::join_all(v)
-                .await
-                .into_iter()
-                .map(|r| r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)))
-                .collect(),
-        );
+        let sockets = futures::future::join_all(v)
+            .await
+            .into_iter()
+            .map(|r| r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)))
+            .collect();
         TokioP2PNetwork { sockets }
     }
 }
 
+#[async_trait]
 impl P2PNetwork for TokioP2PNetwork {
-    fn send<'de, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
         &mut self,
-        message: Box<MsgT>,
-        serializer: Arc<SerializerT>,
+        message: MsgT,
+        serializer: &'s SerializerT,
         node: Arc<String>,
     ) where
-        MsgT: ActorMsg + Send + Sync + 'static,
-        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static,
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        let sockets_arc = self.sockets.clone();
-        let serializer_arc = serializer.clone();
-        tokio::spawn(async move {
-            let mut buffer = [0u8; BUFFER_SIZE];
-            let valid = serializer_arc(message, &mut buffer)
-                .unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
-            sockets_arc
-                .get(&node)
-                .expect("Node not found")
-                .send(&buffer[..valid])
-                .await
-                .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
-        });
+        send::<MsgT, SerializerT, BUFFER_SIZE>(
+            self,
+            message,
+            serializer,
+            node,
+        )
+        .await
     }
 
-    fn broadcast<'de, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn broadcast<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
         &mut self,
-        message: Box<MsgT>,
-        serializer: Arc<SerializerT>,
+        message: MsgT,
+        serializer: &'s SerializerT,
     ) where
-        MsgT: ActorMsg + Send + Sync + 'static,
-        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static,
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        for node in self.sockets.clone().keys() {
-            self.send::<MsgT, SerializerT, BUFFER_SIZE>(
-                dyn_clone::clone_box(&*message),
-                serializer.clone(),
+        let keys = self.sockets.keys();
+        for node in keys {
+            send::<MsgT, SerializerT, BUFFER_SIZE>(
+                self,
+                *dyn_clone::clone_box(&message),
+                serializer,
                 node.clone(),
             )
+            .await
         }
     }
+}
+
+async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    tokio_p2p_network: &TokioP2PNetwork,
+    message: MsgT,
+    serializer: &'s SerializerT,
+    node: Arc<String>,
+) where
+    MsgT: ActorMsg,
+    SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize>,
+{
+    let mut buffer = [0u8; BUFFER_SIZE];
+    let valid = serializer(message, &mut buffer)
+        .unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
+    tokio_p2p_network
+        .sockets
+        .get(&node)
+        .expect("Node not found")
+        .send(&buffer[..valid])
+        .await
+        .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
 }

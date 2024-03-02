@@ -8,3 +8,4 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 dyn-clone = "1.0.17"
 downcast-rs = "1.2.0"
 anyhow = "1.0.80"
+async-trait = "0.1.77"

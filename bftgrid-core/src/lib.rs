@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use async_trait::async_trait;
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::{clone_trait_object, DynClone};
 
@@ -107,21 +108,22 @@ pub trait ActorSystem: Clone + Send + Debug {
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 }
 
+#[async_trait]
 pub trait P2PNetwork {
-    fn send<MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
         &mut self,
-        message: Box<MsgT>,
-        serializer: Arc<SerializerT>,
+        message: MsgT,
+        serializer: &'s SerializerT,
         node: Arc<String>,
     ) where
-        MsgT: ActorMsg + Send + Sync + 'static,
-        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static;
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
 
-    fn broadcast<MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn broadcast<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
         &mut self,
-        message: Box<MsgT>,
-        serializer: Arc<SerializerT>,
+        message: MsgT,
+        serializer: &'s SerializerT,
     ) where
-        MsgT: ActorMsg + Send + Sync + 'static,
-        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static;
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
 }

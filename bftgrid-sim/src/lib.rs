@@ -495,15 +495,16 @@ impl ActorSystem for Simulation {
     }
 }
 
+#[async_trait]
 impl P2PNetwork for Simulation {
-    fn send<MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
         &mut self,
-        message: Box<MsgT>,
-        _serializer: Arc<SerializerT>,
+        message: MsgT,
+        _serializer: &'s SerializerT,
         to_node: Arc<String>,
     ) where
-        MsgT: ActorMsg + Send + Sync + 'static,
-        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static,
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -513,18 +514,18 @@ impl P2PNetwork for Simulation {
                 instant,
                 event: SimulationEvent::ClientSend {
                     to_node: to_node.clone(),
-                    event: message,
+                    event: Box::new(message),
                 },
             })
     }
 
-    fn broadcast<MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn broadcast<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
         &mut self,
-        message: Box<MsgT>,
-        _serializer: Arc<SerializerT>,
+        message: MsgT,
+        _serializer: &'s SerializerT,
     ) where
-        MsgT: ActorMsg + Send + Sync + 'static,
-        SerializerT: Fn(Box<MsgT>, &mut [u8]) -> anyhow::Result<usize> + Send + Sync + 'static,
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {
@@ -535,7 +536,7 @@ impl P2PNetwork for Simulation {
                     instant,
                     event: SimulationEvent::ClientSend {
                         to_node: Arc::new(node_name.clone()),
-                        event: dyn_clone::clone_box(&*message),
+                        event: dyn_clone::clone_box(&message),
                     },
                 })
         }
