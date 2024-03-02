@@ -1,5 +1,5 @@
 use std::{
-    collections::BinaryHeap,
+    collections::{BinaryHeap, HashMap},
     fmt::Debug,
     marker::PhantomData,
     mem,
@@ -10,8 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, P2PTopology, TypedHandler,
-    UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -89,8 +88,33 @@ impl PartialOrd for SimulationEventAtInstant {
     }
 }
 
+#[derive(Debug)]
+pub struct NodeDescriptor {
+    pub client_request_handler: Option<Arc<String>>,
+    pub p2p_request_handler: Option<Arc<String>>,
+    pub all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
+}
+
+impl NodeDescriptor {
+    pub fn new() -> Self {
+        NodeDescriptor {
+            client_request_handler: Default::default(),
+            p2p_request_handler: Default::default(),
+            all_handlers: Default::default(),
+        }
+    }
+}
+
+impl Default for NodeDescriptor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+type Topology = HashMap<String, NodeDescriptor>;
+
 pub struct SimulatedActor<MsgT, HandlerT> {
-    topology: Arc<Mutex<P2PTopology>>,
+    topology: Arc<Mutex<Topology>>,
     node_id: Arc<String>,
     name: Arc<String>,
     handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
@@ -137,7 +161,7 @@ where
 }
 
 pub struct Simulation {
-    topology: Arc<Mutex<P2PTopology>>,
+    topology: Arc<Mutex<Topology>>,
     exited_actors: Arc<Mutex<Vec<Arc<String>>>>,
     internal_events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
     events_queue: Arc<Mutex<BinaryHeap<SimulationEventAtInstant>>>,
@@ -147,7 +171,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(topology: P2PTopology, start_instant: Instant, end_instant: Instant) -> Simulation {
+    pub fn new(topology: Topology, start_instant: Instant, end_instant: Instant) -> Simulation {
         Simulation {
             topology: Arc::new(Mutex::new(topology)),
             exited_actors: Default::default(),

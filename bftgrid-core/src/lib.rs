@@ -1,8 +1,6 @@
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -118,28 +116,3 @@ pub trait P2PNetwork {
     where
         MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static;
 }
-
-#[derive(Debug)]
-pub struct P2PNode {
-    pub client_request_handler: Option<Arc<String>>,
-    pub p2p_request_handler: Option<Arc<String>>,
-    pub all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
-}
-
-impl P2PNode {
-    pub fn new() -> Self {
-        P2PNode {
-            client_request_handler: Default::default(),
-            p2p_request_handler: Default::default(),
-            all_handlers: Default::default(),
-        }
-    }
-}
-
-impl Default for P2PNode {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub type P2PTopology = HashMap<String, P2PNode>;

@@ -1,9 +1,8 @@
 use std::{
     fmt::Debug,
     mem,
-    sync::mpsc,
     sync::{
-        mpsc::{RecvError, Sender},
+        mpsc::{self, RecvError, Sender},
         Arc, Condvar, Mutex,
     },
     thread::{self, JoinHandle as ThreadJoinHandle},
@@ -11,8 +10,12 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_core::{
+    ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler, UntypedHandlerBox,
+};
+use serde::{Deserialize, Deserializer, Serialize};
 use tokio::{
+    net::UdpSocket,
     runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
     task::JoinHandle as TokioJoinHandle,
@@ -403,5 +406,54 @@ impl ActorSystem for ThreadActorSystem {
             .handler_tx
             .send(Arc::new(Mutex::new(handler)))
             .unwrap();
+    }
+}
+
+pub struct TokioNetworkNode {
+    handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
+    socket: UdpSocket,
+}
+
+impl TokioNetworkNode {
+    pub async fn new(
+        handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
+        socket: UdpSocket,
+    ) -> Result<Self, ()> {
+        Ok(TokioNetworkNode { handler, socket })
+    }
+
+    pub fn start<'de, MsgT, DeT, DeCT, const BUFFER_SIZE: usize>(
+        self,
+        new_deserializer: DeCT,
+    ) -> TokioJoinHandle<()>
+    where
+        MsgT: ActorMsg + Serialize + Deserialize<'de>,
+        DeT: Deserializer<'de>,
+        DeCT: Fn(&mut [u8]) -> DeT + Send + 'static,
+    {
+        tokio::spawn(async move {
+            let mut data = [0u8; BUFFER_SIZE];
+            loop {
+                let valid_bytes = self
+                    .socket
+                    .recv(&mut data[..])
+                    .await
+                    .unwrap_or_else(|e| panic!("Receive failed: {:?}", e));
+                let message = MsgT::deserialize(new_deserializer(&mut data[..valid_bytes]))
+                    .unwrap_or_else(|e| panic!("Deserialization failed: {:?}", e));
+                if self
+                    .handler
+                    .lock()
+                    .expect("Lock failed (poisoned)")
+                    .as_mut()
+                    .expect("P2P handler unset")
+                    .receive_untyped(Box::new(message))
+                    .expect("Unsupported message")
+                    .is_some()
+                {
+                    break;
+                }
+            }
+        })
     }
 }
