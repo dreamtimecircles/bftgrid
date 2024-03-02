@@ -1,11 +1,14 @@
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::{clone_trait_object, DynClone};
+use serde::{Deserialize, Serialize};
 
 pub trait ActorMsg: DynClone + Downcast + Send + Debug {}
 clone_trait_object!(ActorMsg);
@@ -39,6 +42,8 @@ pub trait UntypedHandler<'msg>: Send + Debug {
         message: Box<dyn ActorMsg + 'msg>,
     ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
+
+pub type UntypedHandlerBox = Box<dyn UntypedHandler<'static>>;
 
 impl<'msg, MsgT, HandlerT> UntypedHandler<'msg> for HandlerT
 where
@@ -105,11 +110,36 @@ pub trait ActorSystem: Clone + Send + Debug {
 }
 
 pub trait P2PNetwork {
-    fn send<MsgT>(&mut self, message: MsgT, node: String)
+    fn send<'de, MsgT>(&mut self, message: MsgT, node: String)
     where
-        MsgT: ActorMsg + 'static;
+        MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static;
 
-    fn broadcast<MsgT>(&mut self, message: MsgT)
+    fn broadcast<'de, MsgT>(&mut self, message: MsgT)
     where
-        MsgT: ActorMsg + 'static;
+        MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static;
 }
+
+#[derive(Debug)]
+pub struct P2PNode {
+    pub client_request_handler: Option<Arc<String>>,
+    pub p2p_request_handler: Option<Arc<String>>,
+    pub all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
+}
+
+impl P2PNode {
+    pub fn new() -> Self {
+        P2PNode {
+            client_request_handler: Default::default(),
+            p2p_request_handler: Default::default(),
+            all_handlers: Default::default(),
+        }
+    }
+}
+
+impl Default for P2PNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub type P2PTopology = HashMap<String, P2PNode>;

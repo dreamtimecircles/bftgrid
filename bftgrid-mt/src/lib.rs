@@ -26,7 +26,7 @@ where
 {
     actor_system: TokioActorSystem,
     tx: TUnboundedSender<MsgT>,
-    handler_tx: TUnboundedSender<HandlerT>,
+    handler_tx: TUnboundedSender<Arc<Mutex<HandlerT>>>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
 }
 
@@ -161,7 +161,7 @@ impl ActorSystem for TokioActorSystem {
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
-        let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<HandlerT>();
+        let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<Arc<Mutex<HandlerT>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         self.tasks.lock().unwrap().push(TokioJoinable {
@@ -177,16 +177,16 @@ impl ActorSystem for TokioActorSystem {
                             rx.close();
                             handler_rx.close();
                             notify_close(close_cond2);
-                            return
+                            return;
                         }
                         Some(m) => {
-                            if let Some(control) = current_handler.receive(m) {
+                            if let Some(control) = current_handler.lock().unwrap().receive(m) {
                                 match control {
                                     ActorControl::Exit() => {
                                         rx.close();
                                         handler_rx.close();
                                         notify_close(close_cond2);
-                                        return
+                                        return;
                                     }
                                 }
                             }
@@ -211,7 +211,10 @@ impl ActorSystem for TokioActorSystem {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
-        actor_ref.handler_tx.send(handler).unwrap();
+        actor_ref
+            .handler_tx
+            .send(Arc::new(Mutex::new(handler)))
+            .unwrap();
     }
 }
 
@@ -241,7 +244,7 @@ where
 {
     actor_system: ThreadActorSystem,
     tx: Sender<MsgT>,
-    handler_tx: Sender<HandlerT>,
+    handler_tx: Sender<Arc<Mutex<HandlerT>>>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
 }
 
@@ -351,7 +354,7 @@ impl ActorSystem for ThreadActorSystem {
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
         let (tx, rx) = mpsc::channel();
-        let (handler_tx, handler_rx) = mpsc::channel::<HandlerT>();
+        let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<HandlerT>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         self.tasks.lock().unwrap().push(ThreadJoinable {
@@ -364,14 +367,14 @@ impl ActorSystem for ThreadActorSystem {
                     match rx.recv() {
                         Err(RecvError) => {
                             notify_close(close_cond2);
-                            return
+                            return;
                         }
                         Ok(m) => {
-                            if let Some(control) = current_handler.receive(m) {
+                            if let Some(control) = current_handler.lock().unwrap().receive(m) {
                                 match control {
                                     ActorControl::Exit() => {
                                         notify_close(close_cond2);
-                                        return
+                                        return;
                                     }
                                 }
                             }
@@ -396,6 +399,9 @@ impl ActorSystem for ThreadActorSystem {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
-        actor_ref.handler_tx.send(handler).unwrap();
+        actor_ref
+            .handler_tx
+            .send(Arc::new(Mutex::new(handler)))
+            .unwrap();
     }
 }

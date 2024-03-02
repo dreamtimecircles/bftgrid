@@ -1,5 +1,5 @@
 use std::{
-    collections::{BinaryHeap, HashMap},
+    collections::BinaryHeap,
     fmt::Debug,
     marker::PhantomData,
     mem,
@@ -10,12 +10,14 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, P2PTopology, TypedHandler,
+    UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
 };
+use serde::{Deserialize, Serialize};
 
 const SEED: u64 = 10;
 const MAX_RANDOM_DURATION: Duration = Duration::from_secs(1);
@@ -75,45 +77,20 @@ impl PartialEq for SimulationEventAtInstant {
 
 impl Eq for SimulationEventAtInstant {}
 
-impl PartialOrd for SimulationEventAtInstant {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.instant.partial_cmp(&self.instant) // Reverse order: earlier is bigger
-    }
-}
-
 impl Ord for SimulationEventAtInstant {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other.instant.cmp(&self.instant) // Reverse order: earlier is bigger
     }
 }
 
-type UntypedHandlerBox = Box<dyn UntypedHandler<'static>>;
-
-#[derive(Debug)]
-pub struct Node {
-    client_request_handler: Option<Arc<String>>,
-    p2p_request_handler: Option<Arc<String>>,
-    all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
-}
-
-impl Node {
-    pub fn new() -> Self {
-        Node {
-            client_request_handler: Default::default(),
-            p2p_request_handler: Default::default(),
-            all_handlers: Default::default(),
-        }
-    }
-}
-
-impl Default for Node {
-    fn default() -> Self {
-        Self::new()
+impl PartialOrd for SimulationEventAtInstant {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
 pub struct SimulatedActor<MsgT, HandlerT> {
-    topology: Arc<Mutex<Topology>>,
+    topology: Arc<Mutex<P2PTopology>>,
     node_id: Arc<String>,
     name: Arc<String>,
     handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
@@ -159,10 +136,8 @@ where
     }
 }
 
-type Topology = HashMap<String, Node>;
-
 pub struct Simulation {
-    topology: Arc<Mutex<Topology>>,
+    topology: Arc<Mutex<P2PTopology>>,
     exited_actors: Arc<Mutex<Vec<Arc<String>>>>,
     internal_events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
     events_queue: Arc<Mutex<BinaryHeap<SimulationEventAtInstant>>>,
@@ -172,7 +147,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(topology: Topology, start_instant: Instant, end_instant: Instant) -> Simulation {
+    pub fn new(topology: P2PTopology, start_instant: Instant, end_instant: Instant) -> Simulation {
         Simulation {
             topology: Arc::new(Mutex::new(topology)),
             exited_actors: Default::default(),
@@ -498,9 +473,9 @@ impl ActorSystem for Simulation {
 }
 
 impl P2PNetwork for Simulation {
-    fn send<MsgT>(&mut self, message: MsgT, to_node: String)
+    fn send<'de, MsgT>(&mut self, message: MsgT, to_node: String)
     where
-        MsgT: ActorMsg + 'static,
+        MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -515,9 +490,9 @@ impl P2PNetwork for Simulation {
             })
     }
 
-    fn broadcast<MsgT>(&mut self, message: MsgT)
+    fn broadcast<'de, MsgT>(&mut self, message: MsgT)
     where
-        MsgT: ActorMsg + 'static,
+        MsgT: ActorMsg + Serialize + Deserialize<'de> + 'static,
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {

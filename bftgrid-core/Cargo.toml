@@ -7,3 +7,4 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 [dependencies]
 dyn-clone = "1.0.16"
 downcast-rs = "1.2.0"
+serde = "1.0.197"

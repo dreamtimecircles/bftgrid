@@ -227,15 +227,15 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use bftgrid_core::ActorRef;
-    use bftgrid_sim::{Node, Simulation};
+    use bftgrid_core::{ActorRef, P2PNode};
+    use bftgrid_sim::Simulation;
 
     use crate::{build_system, Ping, System};
 
     #[test]
     fn simulation() {
         let mut topology = HashMap::new();
-        topology.insert("node".into(), Node::new());
+        topology.insert("node".into(), P2PNode::new());
         let start = Instant::now();
         let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
         let System { mut actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
