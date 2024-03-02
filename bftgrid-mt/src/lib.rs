@@ -441,13 +441,12 @@ impl TokioNetworkNode {
                     .unwrap_or_else(|e| panic!("Receive failed: {:?}", e));
                 let message = MsgT::deserialize(new_deserializer(&mut data[..valid_bytes]))
                     .unwrap_or_else(|e| panic!("Deserialization failed: {:?}", e));
-                if self
+                if let Some(ActorControl::Exit()) = self
                     .handler
                     .lock()
                     .expect("Lock failed (poisoned)")
                     .receive_untyped(Box::new(message))
                     .expect("Unsupported message")
-                    .is_some()
                 {
                     break;
                 }
