@@ -10,20 +10,20 @@ impl ActorMsg for Ping {}
 #[derive(Clone, Debug)]
 struct Actor1ToActor2<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + 'static,
+    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
     pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
 }
 
 impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
-    ActorSystemT: ActorSystem + 'static
+    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static
 {
 }
 
 #[derive(Debug)]
 struct Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + 'static,
+    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
     self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
     node_id: String,
@@ -35,7 +35,7 @@ where
 
 impl<ActorSystemT> Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem,
+    ActorSystemT: ActorSystem + std::fmt::Debug + Send,
 {
     fn new(
         self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
@@ -75,7 +75,7 @@ where
 
 impl<Actor1ActorSystemT> TypedHandler<'_> for Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
     type MsgT = Actor1ToActor2<Actor1ActorSystemT>;
 
@@ -89,7 +89,7 @@ where
 
 impl<ActorSystemT> TypedHandler<'_> for Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + 'static,
+    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
     type MsgT = Ping;
 
@@ -146,7 +146,7 @@ where
 
 struct System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystem + 'static,
 {
     actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
@@ -159,7 +159,7 @@ where
 
 impl<Actor1ActorSystemT, Actor2ActorSystemT> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystem + 'static,
 {
     fn new(
@@ -182,7 +182,7 @@ fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
     mut actor2_actor_system: Actor2ActorSystemT,
 ) -> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystem + 'static,
 {
     let mut actor1_ref = actor1_actor_system.create("node".into(), "actor1".into());

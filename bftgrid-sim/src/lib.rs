@@ -497,11 +497,11 @@ impl ActorSystem for Simulation {
 
 #[async_trait]
 impl P2PNetwork for Simulation {
-    async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
-        _serializer: &'s SerializerT,
-        to_node: Arc<String>,
+        _serializer: &SerializerT,
+        to_node: &String,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
@@ -513,16 +513,16 @@ impl P2PNetwork for Simulation {
             .push(SimulationEventAtInstant {
                 instant,
                 event: SimulationEvent::ClientSend {
-                    to_node: to_node.clone(),
+                    to_node: Arc::new(to_node.clone()),
                     event: Box::new(message),
                 },
             })
     }
 
-    async fn broadcast<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
-        _serializer: &'s SerializerT,
+        _serializer: &SerializerT,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,

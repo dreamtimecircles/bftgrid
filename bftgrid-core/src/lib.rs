@@ -1,7 +1,6 @@
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    sync::Arc,
     time::Duration,
 };
 
@@ -84,7 +83,7 @@ where
     }
 }
 
-pub trait ActorSystem: Clone + Send + Debug {
+pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
         MsgT: ActorMsg + 'static,
@@ -109,20 +108,20 @@ pub trait ActorSystem: Clone + Send + Debug {
 }
 
 #[async_trait]
-pub trait P2PNetwork {
-    async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+pub trait P2PNetwork: Clone {
+    async fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
-        serializer: &'s SerializerT,
-        node: Arc<String>,
+        serializer: &SerializerT,
+        node: &String,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
 
-    async fn broadcast<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+    async fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT, >(
         &mut self,
         message: MsgT,
-        serializer: &'s SerializerT,
+        serializer: &SerializerT,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
