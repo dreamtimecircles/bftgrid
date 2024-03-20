@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use async_trait::async_trait;
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::{clone_trait_object, DynClone};
 
@@ -107,18 +106,17 @@ pub trait ActorSystem: Clone {
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 }
 
-#[async_trait]
 pub trait P2PNetwork: Clone {
-    async fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: &String,
+        node: &str,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
 
-    async fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT, >(
+    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,

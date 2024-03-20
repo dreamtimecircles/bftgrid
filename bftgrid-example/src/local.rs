@@ -202,7 +202,8 @@ where
     System::new(actor1_ref, actor2_ref)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let thread_actor_system = ThreadActorSystem::new();
     let tokio_actor_system = TokioActorSystem::new();
     let System {
@@ -215,7 +216,7 @@ fn main() {
     println!("Joined Actor2");
     actor1_ref.join();
     println!("Joined Actor1");
-    tokio_actor_system.join();
+    tokio_actor_system.join().await;
     thread_actor_system.join();
 }
 

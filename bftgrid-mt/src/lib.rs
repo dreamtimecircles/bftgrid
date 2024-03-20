@@ -17,7 +17,6 @@ use bftgrid_core::{
 };
 use tokio::{
     net::UdpSocket,
-    runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
     task::JoinHandle as TokioJoinHandle,
 };
@@ -53,26 +52,6 @@ where
     }
 }
 
-#[derive(Debug)]
-struct TokioJoinable<T> {
-    runtime: Arc<Runtime>,
-    underlying: TokioJoinHandle<T>,
-}
-
-impl<T> Joinable<T> for TokioJoinable<T>
-where
-    T: Debug + Send,
-{
-    fn join(self) -> T {
-        self.runtime.block_on(self.underlying).unwrap()
-    }
-
-    fn is_finished(&mut self) -> bool {
-        self.underlying.is_finished()
-    }
-}
-
-#[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg + 'static,
@@ -80,15 +59,13 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        self.actor_system.tasks.lock().unwrap().push(TokioJoinable {
-            runtime: self.actor_system.runtime.clone(),
-            underlying: self.actor_system.runtime.spawn(async move {
-                if let Some(delay_duration) = delay {
-                    tokio::time::sleep(delay_duration).await;
-                }
-                sender.send(message).ok().unwrap()
-            }),
+        let t = self.actor_system.spawn(async move {
+            if let Some(delay_duration) = delay {
+                tokio::time::sleep(delay_duration).await;
+            }
+            sender.send(message).ok().unwrap()
         });
+        self.actor_system.tasks.lock().unwrap().push(t);
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -103,15 +80,34 @@ where
 
 #[derive(Clone, Debug)]
 pub struct TokioActorSystem {
-    runtime: Arc<Runtime>,
-    tasks: Arc<Mutex<Vec<TokioJoinable<()>>>>,
+    runtime: Option<Arc<tokio::runtime::Runtime>>,
+    tasks: Arc<Mutex<Vec<TokioJoinHandle<()>>>>,
 }
 
 impl TokioActorSystem {
     pub fn new() -> Self {
         TokioActorSystem {
-            runtime: Arc::new(Runtime::new().unwrap()),
             tasks: Default::default(),
+            runtime: None,
+        }
+    }
+
+    pub fn spawn<F>(&mut self, future: F) -> tokio::task::JoinHandle<F::Output>
+    where
+        F: core::future::Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle.spawn(future),
+            Err(_) => match &self.runtime {
+                Some(runtime) => runtime.spawn(future),
+                None => {
+                    let runtime = tokio::runtime::Runtime::new().unwrap();
+                    let res = runtime.spawn(future);
+                    self.runtime = Some(Arc::new(runtime));
+                    res
+                }
+            },
         }
     }
 }
@@ -122,18 +118,20 @@ impl Default for TokioActorSystem {
     }
 }
 
-impl Joinable<()> for TokioActorSystem {
-    fn join(self) {
-        let mut locked_tasks = self.tasks.lock().unwrap();
+impl TokioActorSystem {
+    pub async fn join(self) {
         let mut tasks = vec![];
-        mem::swap(&mut *locked_tasks, &mut tasks);
-        drop(locked_tasks); // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        {
+            let mut locked_tasks = self.tasks.lock().unwrap();
+            mem::swap(&mut *locked_tasks, &mut tasks);
+            // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        }
         for t in tasks {
-            t.join();
+            t.await.unwrap();
         }
     }
 
-    fn is_finished(&mut self) -> bool {
+    pub fn is_finished(&mut self) -> bool {
         self.tasks
             .lock()
             .unwrap()
@@ -168,37 +166,35 @@ impl ActorSystem for TokioActorSystem {
         let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<Arc<Mutex<HandlerT>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
-        self.tasks.lock().unwrap().push(TokioJoinable {
-            runtime: self.runtime.clone(),
-            underlying: self.runtime.spawn(async move {
-                let mut current_handler = handler_rx.recv().await.unwrap();
-                loop {
-                    if let Ok(new_handler) = handler_rx.try_recv() {
-                        current_handler = new_handler;
+        let t = self.spawn(async move {
+            let mut current_handler = handler_rx.recv().await.unwrap();
+            loop {
+                if let Ok(new_handler) = handler_rx.try_recv() {
+                    current_handler = new_handler;
+                }
+                match rx.recv().await {
+                    None => {
+                        rx.close();
+                        handler_rx.close();
+                        notify_close(close_cond2);
+                        return;
                     }
-                    match rx.recv().await {
-                        None => {
-                            rx.close();
-                            handler_rx.close();
-                            notify_close(close_cond2);
-                            return;
-                        }
-                        Some(m) => {
-                            if let Some(control) = current_handler.lock().unwrap().receive(m) {
-                                match control {
-                                    ActorControl::Exit() => {
-                                        rx.close();
-                                        handler_rx.close();
-                                        notify_close(close_cond2);
-                                        return;
-                                    }
+                    Some(m) => {
+                        if let Some(control) = current_handler.lock().unwrap().receive(m) {
+                            match control {
+                                ActorControl::Exit() => {
+                                    rx.close();
+                                    handler_rx.close();
+                                    notify_close(close_cond2);
+                                    return;
                                 }
                             }
                         }
                     }
                 }
-            }),
+            }
         });
+        self.tasks.lock().unwrap().push(t);
         TokioActor {
             actor_system: self.clone(),
             tx,
@@ -416,7 +412,7 @@ pub struct TokioNetworkNode {
 }
 
 impl TokioNetworkNode {
-    pub fn new(handler: Arc<Mutex<UntypedHandlerBox>>, socket: UdpSocket) -> Result<Self, ()> {
+    pub fn new(handler: Arc<Mutex<UntypedHandlerBox>>, socket: UdpSocket) -> anyhow::Result<Self> {
         Ok(TokioNetworkNode { handler, socket })
     }
 
@@ -455,7 +451,6 @@ impl TokioNetworkNode {
 #[derive(Debug, Clone)]
 pub struct TokioP2PNetwork {
     sockets: HashMap<String, Arc<UdpSocket>>,
-    connected: bool,
 }
 
 impl TokioP2PNetwork {
@@ -472,50 +467,47 @@ impl TokioP2PNetwork {
                 )
             })
         });
-        let sockets = futures::future::join_all(v).await
+        let sockets = futures::future::join_all(v)
+            .await
             .into_iter()
             .map(|r| r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)))
             .collect();
-        TokioP2PNetwork {
-            sockets,
-            connected: false,
-        }
+        TokioP2PNetwork { sockets }
     }
 
     pub async fn connect(&mut self) {
         let sockets = self.sockets.clone();
-        let v = sockets.into_iter().map(|(address, socket)|
-        tokio::runtime::Handle::current().spawn(async move {
-                socket.connect(address)
-                            .await
-                            .unwrap_or_else(|e| panic!("Unable to connect: {:?}", e))
+        let v = sockets.into_iter().map(|(address, socket)| {
+            tokio::runtime::Handle::current().spawn(async move {
+                socket
+                    .connect(address)
+                    .await
+                    .unwrap_or_else(|e| panic!("Unable to connect: {:?}", e))
             })
-        );
-        futures::future::join_all(v).await
+        });
+        futures::future::join_all(v)
+            .await
             .into_iter()
-            .for_each(|r| { r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)); });
-        self.connected = true;
+            .for_each(|r| {
+                r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e));
+            });
     }
 }
 
-#[async_trait]
 impl P2PNetwork for TokioP2PNetwork {
-    async fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: &String,
+        node: &str,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        if !self.connected {
-            self.connect().await
-        }
-        send::<MsgT, SerializerT, BUFFER_SIZE>(self, message, serializer, &node).await
+        send::<MsgT, SerializerT, BUFFER_SIZE>(self, message, serializer, node);
     }
 
-    async fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
@@ -523,9 +515,6 @@ impl P2PNetwork for TokioP2PNetwork {
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        if !self.connected {
-            self.connect().await
-        }
         let keys = self.sockets.keys();
         for node in keys {
             send::<MsgT, SerializerT, BUFFER_SIZE>(
@@ -533,29 +522,33 @@ impl P2PNetwork for TokioP2PNetwork {
                 *dyn_clone::clone_box(&message),
                 serializer,
                 node,
-            )
-            .await
+            );
         }
     }
 }
 
-async fn send<'s, MsgT, SerializerT, const BUFFER_SIZE: usize>(
+fn send<MsgT, SerializerT, const BUFFER_SIZE: usize>(
     tokio_p2p_network: &TokioP2PNetwork,
     message: MsgT,
     serializer: &SerializerT,
-    node: &String,
+    node: &str,
 ) where
     MsgT: ActorMsg,
     SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize>,
 {
+    println!("Sending to {}", node);
     let mut buffer = [0u8; BUFFER_SIZE];
     let valid =
         serializer(message, &mut buffer).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
-    tokio_p2p_network
+    let socket_handle = tokio_p2p_network
         .sockets
         .get(node)
         .expect("Node not found")
-        .send(&buffer[..valid])
-        .await
-        .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
+        .clone();
+    tokio::spawn(async move {
+        socket_handle
+            .send(&buffer[..valid])
+            .await
+            .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
+    });
 }

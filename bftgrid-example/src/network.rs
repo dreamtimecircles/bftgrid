@@ -58,12 +58,9 @@ where
     fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
             0 => {
-                println!("Actor1 received first ping, sending ref to Actor2");
+                println!("Actor1 received first ping, sending ping to Actor2 over the network");
                 let mut out = self.network_out.clone();
-                tokio::spawn(async move {
-                    out.send::<0, _, _>(Ping {}, &|_msg, _bytes| anyhow::Ok(0), &"localhost:5002".into())
-                        .await
-                });
+                out.send::<0, _, _>(Ping {}, &|_msg, _bytes| anyhow::Ok(0), "localhost:5002");
                 None
             }
             1 => {
@@ -132,11 +129,7 @@ where
     fn receive(&mut self, msg: Self::MsgT) -> Option<ActorControl> {
         println!("Actor2 received ping over the network, replying with a ping over the network");
         let mut out = self.network_out.clone();
-        tokio::spawn(async move { out.send::<0, _, _>(
-            msg,
-            &|_msg, _bytes| anyhow::Ok(0),
-            &"localhost:5001".into(),
-        ).await });
+        out.send::<0, _, _>(msg, &|_msg, _bytes| anyhow::Ok(0), "localhost:5001");
         println!("Actor2 sent ping, exiting");
         Some(ActorControl::Exit())
     }
@@ -200,7 +193,9 @@ where
 #[tokio::main]
 async fn main() {
     let network1 = TokioP2PNetwork::new(vec!["localhost:5002".into()]).await;
+    let mut network1_handle = network1.clone();
     let network2 = TokioP2PNetwork::new(vec!["localhost:5001".into()]).await;
+    let mut network2_handle = network2.clone();
     let mut tokio_actor_system = TokioActorSystem::new();
     let mut actor1_ref = tokio_actor_system.create("node1".into(), "actor1".into());
     let actor1_ref_copy = actor1_ref.new_ref();
@@ -226,8 +221,8 @@ async fn main() {
     .unwrap();
     node1.start::<0, _, _>(|_buf| Ok(Ping {}));
     let node2 = TokioNetworkNode::new(
-        Arc::new(Mutex::new(Box::new(Node1P2pNetworkInputHandler {
-            actor1_ref: actor1_ref.new_ref(),
+        Arc::new(Mutex::new(Box::new(Node2P2pNetworkInputHandler {
+            actor2_ref: actor2_ref.new_ref(),
         }))),
         UdpSocket::bind("localhost:5002")
             .await
@@ -235,10 +230,12 @@ async fn main() {
     )
     .unwrap();
     node2.start::<0, _, _>(|_buf| Ok(Ping {}));
+    network1_handle.connect().await;
+    network2_handle.connect().await;
     actor1_ref.send(Ping(), None);
     actor2_ref.join();
     println!("Joined Actor2");
     actor1_ref.join();
     println!("Joined Actor1");
-    tokio_actor_system.join();
+    tokio_actor_system.join().await;
 }
