@@ -4,7 +4,7 @@ use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, MessageNotSupported, P2PNetwork,
     TypedHandler, UntypedHandler,
 };
-use bftgrid_mt::{TokioActorSystem, TokioNetworkNode, TokioP2PNetwork};
+use bftgrid_mt::{ThreadActorSystem, TokioActorSystem, TokioNetworkNode, TokioP2PNetwork};
 
 use tokio::net::UdpSocket;
 
@@ -197,6 +197,7 @@ async fn main() {
     let network2 = TokioP2PNetwork::new(vec!["localhost:5001".into()]).await;
     let mut network2_handle = network2.clone();
     let mut tokio_actor_system = TokioActorSystem::new();
+    let mut thread_actor_system = ThreadActorSystem::new();
     let mut actor1_ref = tokio_actor_system.create("node1".into(), "actor1".into());
     let actor1_ref_copy = actor1_ref.new_ref();
     tokio_actor_system.set_handler(
@@ -208,8 +209,8 @@ async fn main() {
             network1,
         ),
     );
-    let mut actor2_ref = tokio_actor_system.create("node2".into(), "actor2".into());
-    tokio_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2));
+    let mut actor2_ref = thread_actor_system.create("node2".into(), "actor2".into());
+    thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2));
     let node1 = TokioNetworkNode::new(
         Arc::new(Mutex::new(Box::new(Node1P2pNetworkInputHandler {
             actor1_ref: actor1_ref.new_ref(),

@@ -92,23 +92,31 @@ impl TokioActorSystem {
         }
     }
 
-    pub fn spawn<F>(&mut self, future: F) -> tokio::task::JoinHandle<F::Output>
+    fn spawn<F>(&mut self, future: F) -> tokio::task::JoinHandle<F::Output>
     where
         F: core::future::Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => handle.spawn(future),
-            Err(_) => match &self.runtime {
-                Some(runtime) => runtime.spawn(future),
-                None => {
-                    let runtime = tokio::runtime::Runtime::new().unwrap();
-                    let res = runtime.spawn(future);
-                    self.runtime = Some(Arc::new(runtime));
-                    res
-                }
-            },
-        }
+        spawn(&mut self.runtime, future)
+    }
+}
+
+fn spawn<F>(runtime: &mut Option<Arc<tokio::runtime::Runtime>>, future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: core::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => handle.spawn(future),
+        Err(_) => match runtime {
+            Some(r) => r.spawn(future),
+            None => {
+                let r = tokio::runtime::Runtime::new().unwrap();
+                let res = r.spawn(future);
+                *runtime = Some(Arc::new(r));
+                res
+            }
+        },
     }
 }
 
@@ -450,7 +458,34 @@ impl TokioNetworkNode {
 
 #[derive(Debug, Clone)]
 pub struct TokioP2PNetwork {
+    runtime: Option<Arc<tokio::runtime::Runtime>>,
     sockets: HashMap<String, Arc<UdpSocket>>,
+}
+
+fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    runtime: &mut Option<Arc<tokio::runtime::Runtime>>,
+    sockets: &HashMap<String, Arc::<tokio::net::UdpSocket>>,
+    message: MsgT,
+    serializer: &SerializerT,
+    node: &str,
+) where
+    MsgT: ActorMsg,
+    SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize>,
+{
+    println!("Sending to {}", node);
+    let mut buffer = [0u8; BUFFER_SIZE];
+    let valid =
+        serializer(message, &mut buffer).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
+    let socket_handle = sockets
+        .get(node)
+        .expect("Node not found")
+        .clone();
+    spawn(runtime, async move {
+        socket_handle
+            .send(&buffer[..valid])
+            .await
+            .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
+    });
 }
 
 impl TokioP2PNetwork {
@@ -472,13 +507,13 @@ impl TokioP2PNetwork {
             .into_iter()
             .map(|r| r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)))
             .collect();
-        TokioP2PNetwork { sockets }
+        TokioP2PNetwork { runtime: None, sockets }
     }
 
     pub async fn connect(&mut self) {
         let sockets = self.sockets.clone();
         let v = sockets.into_iter().map(|(address, socket)| {
-            tokio::runtime::Handle::current().spawn(async move {
+            spawn(&mut self.runtime, async move {
                 socket
                     .connect(address)
                     .await
@@ -504,7 +539,7 @@ impl P2PNetwork for TokioP2PNetwork {
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        send::<MsgT, SerializerT, BUFFER_SIZE>(self, message, serializer, node);
+        send_internal::<BUFFER_SIZE, MsgT, SerializerT>(&mut self.runtime, &self.sockets, message, serializer, node);
     }
 
     fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
@@ -515,40 +550,14 @@ impl P2PNetwork for TokioP2PNetwork {
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        let keys = self.sockets.keys();
-        for node in keys {
-            send::<MsgT, SerializerT, BUFFER_SIZE>(
-                self,
+        for node in self.sockets.keys() {
+            send_internal::<BUFFER_SIZE, MsgT, SerializerT>(
+                &mut self.runtime,
+                &self.sockets,
                 *dyn_clone::clone_box(&message),
                 serializer,
                 node,
             );
         }
     }
-}
-
-fn send<MsgT, SerializerT, const BUFFER_SIZE: usize>(
-    tokio_p2p_network: &TokioP2PNetwork,
-    message: MsgT,
-    serializer: &SerializerT,
-    node: &str,
-) where
-    MsgT: ActorMsg,
-    SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize>,
-{
-    println!("Sending to {}", node);
-    let mut buffer = [0u8; BUFFER_SIZE];
-    let valid =
-        serializer(message, &mut buffer).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
-    let socket_handle = tokio_p2p_network
-        .sockets
-        .get(node)
-        .expect("Node not found")
-        .clone();
-    tokio::spawn(async move {
-        socket_handle
-            .send(&buffer[..valid])
-            .await
-            .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
-    });
 }
