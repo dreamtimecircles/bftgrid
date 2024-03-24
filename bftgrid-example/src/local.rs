@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn simulation() {
         let mut topology = HashMap::new();
-        topology.insert("node".into(), NodeDescriptor::new());
+        topology.insert("node".into(), NodeDescriptor::new(None, None));
         let start = Instant::now();
         let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
         let System { mut actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());

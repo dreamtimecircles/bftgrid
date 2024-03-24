@@ -101,7 +101,10 @@ impl TokioActorSystem {
     }
 }
 
-fn spawn<F>(runtime: &mut Option<Arc<tokio::runtime::Runtime>>, future: F) -> tokio::task::JoinHandle<F::Output>
+fn spawn<F>(
+    runtime: &mut Option<Arc<tokio::runtime::Runtime>>,
+    future: F,
+) -> tokio::task::JoinHandle<F::Output>
 where
     F: core::future::Future + Send + 'static,
     F::Output: Send + 'static,
@@ -464,7 +467,7 @@ pub struct TokioP2PNetwork {
 
 fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
     runtime: &mut Option<Arc<tokio::runtime::Runtime>>,
-    sockets: &HashMap<String, Arc::<tokio::net::UdpSocket>>,
+    sockets: &HashMap<String, Arc<tokio::net::UdpSocket>>,
     message: MsgT,
     serializer: &SerializerT,
     node: &str,
@@ -476,10 +479,7 @@ fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
     let mut buffer = [0u8; BUFFER_SIZE];
     let valid =
         serializer(message, &mut buffer).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
-    let socket_handle = sockets
-        .get(node)
-        .expect("Node not found")
-        .clone();
+    let socket_handle = sockets.get(node).expect("Node not found").clone();
     spawn(runtime, async move {
         socket_handle
             .send(&buffer[..valid])
@@ -507,7 +507,10 @@ impl TokioP2PNetwork {
             .into_iter()
             .map(|r| r.unwrap_or_else(|e| panic!("Unable to join: {:?}", e)))
             .collect();
-        TokioP2PNetwork { runtime: None, sockets }
+        TokioP2PNetwork {
+            runtime: None,
+            sockets,
+        }
     }
 
     pub async fn connect(&mut self) {
@@ -539,7 +542,13 @@ impl P2PNetwork for TokioP2PNetwork {
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
-        send_internal::<BUFFER_SIZE, MsgT, SerializerT>(&mut self.runtime, &self.sockets, message, serializer, node);
+        send_internal::<BUFFER_SIZE, MsgT, SerializerT>(
+            &mut self.runtime,
+            &self.sockets,
+            message,
+            serializer,
+            node,
+        );
     }
 
     fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(

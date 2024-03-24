@@ -240,3 +240,49 @@ async fn main() {
     println!("Joined Actor1");
     tokio_actor_system.join().await;
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::HashMap,
+        ops::Add,
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+
+    use bftgrid_core::ActorSystem;
+    use bftgrid_sim::{NodeDescriptor, Simulation};
+
+    use crate::{Actor1, Actor2, ActorRef, Ping};
+
+    #[test]
+    fn simulation() {
+        let mut topology = HashMap::new();
+        topology.insert(
+            "localhost:5001".into(),
+            NodeDescriptor::new(None, Some(Arc::new("actor1".into()))),
+        );
+        topology.insert(
+            "localhost:5002".into(),
+            NodeDescriptor::new(None, Some(Arc::new("actor2".into()))),
+        );
+        let start = Instant::now();
+        let mut simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
+        let mut actor1_ref = simulation.create("localhost:5001".into(), "actor1".into());
+        let actor1_ref_copy = actor1_ref.new_ref();
+        simulation.set_handler(
+            &mut actor1_ref,
+            Actor1::new(
+                actor1_ref_copy,
+                "localhost:5001".into(),
+                simulation.clone(),
+                simulation.clone(),
+            ),
+        );
+        let mut actor2_ref = simulation.create("localhost:5002".into(), "actor2".into());
+        simulation.set_handler(&mut actor2_ref, Actor2::new(simulation.clone()));
+        actor1_ref.send(Ping(), None);
+        let history = simulation.run();
+        println!("{:?}", history);
+    }
+}
