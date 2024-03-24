@@ -40,6 +40,8 @@ pub trait UntypedHandler<'msg>: Send + Debug {
     ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
 
+pub type UntypedHandlerBox = Box<dyn UntypedHandler<'static>>;
+
 impl<'msg, MsgT, HandlerT> UntypedHandler<'msg> for HandlerT
 where
     MsgT: ActorMsg + 'msg,
@@ -80,7 +82,7 @@ where
     }
 }
 
-pub trait ActorSystem: Clone + Send + Debug {
+pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
         MsgT: ActorMsg + 'static,
@@ -104,12 +106,21 @@ pub trait ActorSystem: Clone + Send + Debug {
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
 }
 
-pub trait P2PNetwork {
-    fn send<MsgT>(&mut self, message: MsgT, node: String)
-    where
-        MsgT: ActorMsg + 'static;
+pub trait P2PNetwork: Clone {
+    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+        &mut self,
+        message: MsgT,
+        serializer: &SerializerT,
+        node: &str,
+    ) where
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
 
-    fn broadcast<MsgT>(&mut self, message: MsgT)
-    where
-        MsgT: ActorMsg + 'static;
+    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+        &mut self,
+        message: MsgT,
+        serializer: &SerializerT,
+    ) where
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
 }

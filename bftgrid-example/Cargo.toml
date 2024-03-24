@@ -5,11 +5,17 @@ edition = "2021"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
-dyn-clone = "1.0.16"
+dyn-clone = "1.0.17"
+tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
+anyhow = "1.0.80"
 bftgrid-core = { path = "../bftgrid-core" }
 bftgrid-mt = { path = "../bftgrid-mt" }
 bftgrid-sim = { path = "../bftgrid-sim" }
 
 [[bin]]
-name = "bftgrid-example"
-path = "src/bin.rs"
+name = "bftgrid-local-example"
+path = "src/local.rs"
+
+[[bin]]
+name = "bftgrid-network-example"
+path = "src/network.rs"

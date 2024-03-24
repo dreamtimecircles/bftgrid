@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -75,42 +75,45 @@ impl PartialEq for SimulationEventAtInstant {
 
 impl Eq for SimulationEventAtInstant {}
 
-impl PartialOrd for SimulationEventAtInstant {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.instant.partial_cmp(&self.instant) // Reverse order: earlier is bigger
-    }
-}
-
 impl Ord for SimulationEventAtInstant {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other.instant.cmp(&self.instant) // Reverse order: earlier is bigger
     }
 }
 
-type UntypedHandlerBox = Box<dyn UntypedHandler<'static>>;
-
-#[derive(Debug)]
-pub struct Node {
-    client_request_handler: Option<Arc<String>>,
-    p2p_request_handler: Option<Arc<String>>,
-    all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
+impl PartialOrd for SimulationEventAtInstant {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
-impl Node {
-    pub fn new() -> Self {
-        Node {
-            client_request_handler: Default::default(),
-            p2p_request_handler: Default::default(),
+#[derive(Debug)]
+pub struct NodeDescriptor {
+    pub client_request_handler: Option<Arc<String>>,
+    pub p2p_request_handler: Option<Arc<String>>,
+    pub all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
+}
+
+impl NodeDescriptor {
+    pub fn new(
+        client_request_handler: Option<Arc<String>>,
+        p2p_request_handler: Option<Arc<String>>,
+    ) -> Self {
+        NodeDescriptor {
+            client_request_handler,
+            p2p_request_handler,
             all_handlers: Default::default(),
         }
     }
 }
 
-impl Default for Node {
+impl Default for NodeDescriptor {
     fn default() -> Self {
-        Self::new()
+        Self::new(Default::default(), Default::default())
     }
 }
+
+type Topology = HashMap<String, NodeDescriptor>;
 
 pub struct SimulatedActor<MsgT, HandlerT> {
     topology: Arc<Mutex<Topology>>,
@@ -158,8 +161,6 @@ where
         })
     }
 }
-
-type Topology = HashMap<String, Node>;
 
 pub struct Simulation {
     topology: Arc<Mutex<Topology>>,
@@ -252,10 +253,12 @@ impl Simulation {
                         .lock()
                         .unwrap()
                         .get(to_node.as_ref())
-                        .unwrap()
+                        .unwrap_or_else(|| panic!("node {:?} unknown", to_node))
                         .client_request_handler
                         .as_ref()
-                        .expect("client request handler unset")
+                        .unwrap_or_else(|| {
+                            panic!("client request handler unset for node {:?}", to_node)
+                        })
                         .clone();
                     self.events_queue
                         .lock()
@@ -295,7 +298,7 @@ impl Simulation {
                         .unwrap()
                         .p2p_request_handler
                         .as_ref()
-                        .expect("P2P request handler unset")
+                        .unwrap_or_else(|| panic!("p2p request handler unset for node {:?}", node))
                         .clone();
                     self.events_queue
                         .lock()
@@ -345,25 +348,34 @@ impl Simulation {
                             .iter()
                             .any(|elem| *elem == handler)
                         {
-                            panic!("Message sent to actor that has exited")
+                            panic!("message sent to actor that has exited")
                         }
-
                         let mut topology = self.topology.lock().unwrap();
-                        let mut removed_node =
-                            topology.remove(node.as_ref()).expect("node not found");
+                        let mut removed_node = topology
+                            .remove(node.as_ref())
+                            .unwrap_or_else(|| panic!("node {:?} unknown", node));
                         let removed_handler_arc = removed_node
                             .all_handlers
                             .remove(&handler)
-                            .expect("handler not found");
+                            .unwrap_or_else(|| {
+                                panic!("handler {:?} not found for node {:?}", handler, node)
+                            });
                         topology.insert((*node).clone(), removed_node);
                         drop(topology); // So that a handler with access to the actor system can lock it again in `crate` and/or `set_handler`
                         if let Some(control) = removed_handler_arc
                             .lock()
                             .unwrap()
                             .as_mut()
-                            .expect("handler not set")
-                            .receive_untyped(event)
-                            .expect("Found event targeting the wrong actor")
+                            .unwrap_or_else(|| {
+                                panic!("handler {:?} not found for node {:?}", handler, node)
+                            })
+                            .receive_untyped(event.clone())
+                            .unwrap_or_else(|_| {
+                                panic!(
+                                    "handler {:?} for node {:?} cannot handle event {:?}",
+                                    handler, node, event
+                                )
+                            })
                         {
                             match control {
                                 ActorControl::Exit() => {
@@ -372,8 +384,9 @@ impl Simulation {
                             }
                         } else {
                             let mut topology = self.topology.lock().unwrap();
-                            let mut removed_node =
-                                topology.remove(node.as_ref()).expect("node not found");
+                            let mut removed_node = topology
+                                .remove(node.as_ref())
+                                .unwrap_or_else(|| panic!("node {:?} not found", node));
                             removed_node
                                 .all_handlers
                                 .insert(handler, removed_handler_arc.clone());
@@ -462,7 +475,7 @@ impl ActorSystem for Simulation {
             .lock()
             .unwrap()
             .get_mut(&node_id)
-            .unwrap()
+            .unwrap_or_else(|| panic!("Node {:?} unknown", &node_id))
             .all_handlers
             .insert(name_arc, handler_rc.clone())
             .is_some()
@@ -497,10 +510,16 @@ impl ActorSystem for Simulation {
     }
 }
 
+#[async_trait]
 impl P2PNetwork for Simulation {
-    fn send<MsgT>(&mut self, message: MsgT, to_node: String)
-    where
-        MsgT: ActorMsg + 'static,
+    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+        &mut self,
+        message: MsgT,
+        _serializer: &SerializerT,
+        to_node: &str,
+    ) where
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -508,16 +527,20 @@ impl P2PNetwork for Simulation {
             .unwrap()
             .push(SimulationEventAtInstant {
                 instant,
-                event: SimulationEvent::ClientSend {
-                    to_node: Arc::new(to_node),
+                event: SimulationEvent::P2PSend {
+                    to_node: Arc::new(to_node.into()),
                     event: Box::new(message),
                 },
             })
     }
 
-    fn broadcast<MsgT>(&mut self, message: MsgT)
-    where
-        MsgT: ActorMsg + 'static,
+    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+        &mut self,
+        message: MsgT,
+        _serializer: &SerializerT,
+    ) where
+        MsgT: ActorMsg,
+        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {
@@ -526,7 +549,7 @@ impl P2PNetwork for Simulation {
                 .unwrap()
                 .push(SimulationEventAtInstant {
                     instant,
-                    event: SimulationEvent::ClientSend {
+                    event: SimulationEvent::P2PSend {
                         to_node: Arc::new(node_name.clone()),
                         event: dyn_clone::clone_box(&message),
                     },
