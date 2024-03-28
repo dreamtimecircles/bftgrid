@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
-use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
+use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
 #[derive(Clone, Debug)]
 struct Ping();

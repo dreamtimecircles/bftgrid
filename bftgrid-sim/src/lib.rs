@@ -4,7 +4,7 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     mem,
-    ops::Add,
+    ops::{Add, ControlFlow},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -236,169 +236,195 @@ impl Simulation {
             result.push(e_clone);
             self.clock.lock().unwrap().current_instant = e.instant;
 
-            match e.event {
-                SimulationEvent::ClientSend { to_node, event } => {
-                    let client_request_arrival_instant = self.instant_of_client_request_arrival();
-                    self.events_queue
-                        .lock()
-                        .unwrap()
-                        .push(SimulationEventAtInstant {
-                            instant: client_request_arrival_instant,
-                            event: SimulationEvent::ClientRequest { to_node, event },
-                        })
-                }
-                SimulationEvent::ClientRequest { to_node, event } => {
-                    let internal_event_instant = self.instant_of_internal_event();
-                    let client_request_handler = self
-                        .topology
-                        .lock()
-                        .unwrap()
-                        .get(to_node.as_ref())
-                        .unwrap_or_else(|| panic!("node {:?} unknown", to_node))
-                        .client_request_handler
-                        .as_ref()
-                        .unwrap_or_else(|| {
-                            panic!("client request handler unset for node {:?}", to_node)
-                        })
-                        .clone();
-                    self.events_queue
-                        .lock()
-                        .unwrap()
-                        .push(SimulationEventAtInstant {
-                            instant: internal_event_instant,
-                            event: SimulationEvent::Internal {
-                                event: InternalEvent {
-                                    node: to_node,
-                                    handler: client_request_handler,
-                                    event,
-                                    delay: None,
-                                },
-                            },
-                        })
-                }
-                SimulationEvent::P2PSend { to_node, event } => {
-                    let p2p_request_arrival_instant = self.instant_of_p2p_request_arrival();
-                    self.events_queue
-                        .lock()
-                        .unwrap()
-                        .push(SimulationEventAtInstant {
-                            instant: p2p_request_arrival_instant,
-                            event: SimulationEvent::P2PRequest {
-                                node: to_node,
-                                event,
-                            },
-                        });
-                }
-                SimulationEvent::P2PRequest { node, event } => {
-                    let internal_event_instant = self.instant_of_internal_event();
-                    let p2p_request_handler = self
-                        .topology
-                        .lock()
-                        .unwrap()
-                        .get(node.as_ref())
-                        .unwrap()
-                        .p2p_request_handler
-                        .as_ref()
-                        .unwrap_or_else(|| panic!("p2p request handler unset for node {:?}", node))
-                        .clone();
-                    self.events_queue
-                        .lock()
-                        .unwrap()
-                        .push(SimulationEventAtInstant {
-                            instant: internal_event_instant,
-                            event: SimulationEvent::Internal {
-                                event: InternalEvent {
-                                    node,
-                                    handler: p2p_request_handler,
-                                    event,
-                                    delay: None,
-                                },
-                            },
-                        })
-                }
-                SimulationEvent::Internal {
-                    event:
-                        InternalEvent {
-                            node,
-                            handler,
-                            event,
-                            delay,
-                        },
-                } => match delay {
-                    Some(duration) => {
-                        self.events_queue
-                            .lock()
-                            .unwrap()
-                            .push(SimulationEventAtInstant {
-                                instant: e.instant.add(duration),
-                                event: SimulationEvent::Internal {
-                                    event: InternalEvent {
-                                        node,
-                                        handler,
-                                        event,
-                                        delay: None,
-                                    },
-                                },
-                            });
-                    }
-                    None => {
-                        if self
-                            .exited_actors
-                            .lock()
-                            .unwrap()
-                            .iter()
-                            .any(|elem| *elem == handler)
-                        {
-                            panic!("message sent to actor that has exited")
-                        }
-                        let mut topology = self.topology.lock().unwrap();
-                        let mut removed_node = topology
-                            .remove(node.as_ref())
-                            .unwrap_or_else(|| panic!("node {:?} unknown", node));
-                        let removed_handler_arc = removed_node
-                            .all_handlers
-                            .remove(&handler)
-                            .unwrap_or_else(|| {
-                                panic!("handler {:?} not found for node {:?}", handler, node)
-                            });
-                        topology.insert((*node).clone(), removed_node);
-                        drop(topology); // So that a handler with access to the actor system can lock it again in `crate` and/or `set_handler`
-                        if let Some(control) = removed_handler_arc
-                            .lock()
-                            .unwrap()
-                            .as_mut()
-                            .unwrap_or_else(|| {
-                                panic!("handler {:?} not found for node {:?}", handler, node)
-                            })
-                            .receive_untyped(event.clone())
-                            .unwrap_or_else(|_| {
-                                panic!(
-                                    "handler {:?} for node {:?} cannot handle event {:?}",
-                                    handler, node, event
-                                )
-                            })
-                        {
-                            match control {
-                                ActorControl::Exit() => {
-                                    self.exited_actors.lock().unwrap().push(handler)
-                                }
-                            }
-                        } else {
-                            let mut topology = self.topology.lock().unwrap();
-                            let mut removed_node = topology
-                                .remove(node.as_ref())
-                                .unwrap_or_else(|| panic!("node {:?} not found", node));
-                            removed_node
-                                .all_handlers
-                                .insert(handler, removed_handler_arc.clone());
-                            topology.insert((*node).clone(), removed_node);
-                        };
-                    }
-                },
-                SimulationEvent::SimulationEnd => break,
+            if let ControlFlow::Break(_) = self.handle_event(e) {
+                break;
             }
         }
         result
+    }
+
+    fn handle_event(&mut self, e: SimulationEventAtInstant) -> ControlFlow<()> {
+        match e.event {
+            SimulationEvent::ClientSend { to_node, event } => {
+                self.handle_client_send(to_node, event)
+            }
+            SimulationEvent::ClientRequest { to_node, event } => {
+                self.handle_client_request(to_node, event)
+            }
+            SimulationEvent::P2PSend { to_node, event } => self.handle_p2p_send(to_node, event),
+            SimulationEvent::P2PRequest { node, event } => self.handle_p2p_request(node, event),
+            SimulationEvent::Internal {
+                event:
+                    InternalEvent {
+                        node,
+                        handler,
+                        event,
+                        delay,
+                    },
+            } => self.handle_internal_event(delay, e.instant, node, handler, event),
+            SimulationEvent::SimulationEnd => return ControlFlow::Break(()),
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn handle_internal_event(
+        &mut self,
+        delay: Option<Duration>,
+        instant: Instant,
+        node: Arc<String>,
+        handler: Arc<String>,
+        event: Box<dyn ActorMsg>,
+    ) {
+        match delay {
+            Some(duration) => {
+                self.events_queue
+                    .lock()
+                    .unwrap()
+                    .push(SimulationEventAtInstant {
+                        instant: instant.add(duration),
+                        event: SimulationEvent::Internal {
+                            event: InternalEvent {
+                                node,
+                                handler,
+                                event,
+                                delay: None,
+                            },
+                        },
+                    });
+            }
+            None => {
+                if self
+                    .exited_actors
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|elem| *elem == handler)
+                {
+                    panic!("message sent to actor that has exited")
+                }
+                let mut topology = self.topology.lock().unwrap();
+                let mut removed_node = topology
+                    .remove(node.as_ref())
+                    .unwrap_or_else(|| panic!("node {:?} unknown", node));
+                let removed_handler_arc = removed_node
+                    .all_handlers
+                    .remove(&handler)
+                    .unwrap_or_else(|| {
+                        panic!("handler {:?} not found for node {:?}", handler, node)
+                    });
+                topology.insert((*node).clone(), removed_node);
+                drop(topology); // So that a handler with access to the actor system can lock it again in `crate` and/or `set_handler`
+                if let Some(control) = removed_handler_arc
+                    .lock()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap_or_else(|| {
+                        panic!("handler {:?} not found for node {:?}", handler, node)
+                    })
+                    .receive_untyped(event.clone())
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "handler {:?} for node {:?} cannot handle event {:?}",
+                            handler, node, event
+                        )
+                    })
+                {
+                    match control {
+                        ActorControl::Exit() => self.exited_actors.lock().unwrap().push(handler),
+                    }
+                } else {
+                    let mut topology = self.topology.lock().unwrap();
+                    let mut removed_node = topology
+                        .remove(node.as_ref())
+                        .unwrap_or_else(|| panic!("node {:?} not found", node));
+                    removed_node
+                        .all_handlers
+                        .insert(handler, removed_handler_arc.clone());
+                    topology.insert((*node).clone(), removed_node);
+                };
+            }
+        }
+    }
+
+    fn handle_p2p_request(&mut self, node: Arc<String>, event: Box<dyn ActorMsg>) {
+        let internal_event_instant = self.instant_of_internal_event();
+        let p2p_request_handler = self
+            .topology
+            .lock()
+            .unwrap()
+            .get(node.as_ref())
+            .unwrap()
+            .p2p_request_handler
+            .as_ref()
+            .unwrap_or_else(|| panic!("p2p request handler unset for node {:?}", node))
+            .clone();
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant: internal_event_instant,
+                event: SimulationEvent::Internal {
+                    event: InternalEvent {
+                        node,
+                        handler: p2p_request_handler,
+                        event,
+                        delay: None,
+                    },
+                },
+            })
+    }
+
+    fn handle_p2p_send(&mut self, to_node: Arc<String>, event: Box<dyn ActorMsg>) {
+        let p2p_request_arrival_instant = self.instant_of_p2p_request_arrival();
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant: p2p_request_arrival_instant,
+                event: SimulationEvent::P2PRequest {
+                    node: to_node,
+                    event,
+                },
+            });
+    }
+
+    fn handle_client_request(&mut self, to_node: Arc<String>, event: Box<dyn ActorMsg>) {
+        let internal_event_instant = self.instant_of_internal_event();
+        let client_request_handler = self
+            .topology
+            .lock()
+            .unwrap()
+            .get(to_node.as_ref())
+            .unwrap_or_else(|| panic!("node {:?} unknown", to_node))
+            .client_request_handler
+            .as_ref()
+            .unwrap_or_else(|| panic!("client request handler unset for node {:?}", to_node))
+            .clone();
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant: internal_event_instant,
+                event: SimulationEvent::Internal {
+                    event: InternalEvent {
+                        node: to_node,
+                        handler: client_request_handler,
+                        event,
+                        delay: None,
+                    },
+                },
+            })
+    }
+
+    fn handle_client_send(&mut self, to_node: Arc<String>, event: Box<dyn ActorMsg>) {
+        let client_request_arrival_instant = self.instant_of_client_request_arrival();
+        self.events_queue
+            .lock()
+            .unwrap()
+            .push(SimulationEventAtInstant {
+                instant: client_request_arrival_instant,
+                event: SimulationEvent::ClientRequest { to_node, event },
+            })
     }
 
     fn instant_of_internal_event(&mut self) -> Instant {

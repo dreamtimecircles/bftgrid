@@ -4,8 +4,11 @@ use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, MessageNotSupported, P2PNetwork,
     TypedHandler, UntypedHandler,
 };
-use bftgrid_mt::{ThreadActorSystem, TokioActorSystem, TokioNetworkNode, TokioP2PNetwork};
 
+use bftgrid_mt::{
+    thread::ThreadActorSystem,
+    tokio::{TokioActorSystem, TokioNetworkNode, TokioP2PNetwork},
+};
 use tokio::net::UdpSocket;
 
 #[derive(Clone, Debug)]
