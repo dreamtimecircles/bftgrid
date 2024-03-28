@@ -109,20 +109,17 @@ pub trait ActorSystem: Clone {
 }
 
 pub trait P2PNetwork: Clone {
-    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
         node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> AResult<usize> + Sync;
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync;
 
-    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
-        &mut self,
-        message: MsgT,
-        serializer: &SerializerT,
-    ) where
+    fn broadcast<MsgT, SerializerT>(&mut self, message: MsgT, serializer: &SerializerT)
+    where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> AResult<usize> + Sync;
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync;
 }

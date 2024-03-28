@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    error::Error,
     mem,
     sync::{Arc, Condvar, Mutex},
     time::Duration,
@@ -235,7 +234,7 @@ impl TokioNetworkNode {
     ) -> TokioJoinHandle<()>
     where
         MsgT: ActorMsg,
-        DeT: Fn(&mut [u8]) -> Result<MsgT, Box<dyn Error>> + Send + 'static,
+        DeT: Fn(&mut [u8]) -> AResult<MsgT> + Send + 'static,
     {
         tokio::spawn(async move {
             let mut data = [0u8; BUFFER_SIZE];
@@ -267,7 +266,7 @@ pub struct TokioP2PNetwork {
     sockets: HashMap<String, Arc<UdpSocket>>,
 }
 
-fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+fn send_internal<MsgT, SerializerT>(
     runtime: &mut Option<Arc<tokio::runtime::Runtime>>,
     sockets: &HashMap<String, Arc<tokio::net::UdpSocket>>,
     message: MsgT,
@@ -275,16 +274,15 @@ fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
     node: impl AsRef<str>,
 ) where
     MsgT: ActorMsg,
-    SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>>,
+    SerializerT: Fn(MsgT) -> AResult<Vec<u8>>,
 {
     println!("Sending to {}", node.as_ref());
-    let mut buffer = [0u8; BUFFER_SIZE];
-    let valid =
-        serializer(message, &mut buffer).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
+    let serialized_message =
+        serializer(message).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
     let socket_handle = sockets.get(node.as_ref()).expect("Node not found").clone();
     spawn(runtime, async move {
         socket_handle
-            .send(&buffer[..valid])
+            .send(&serialized_message[..])
             .await
             .unwrap_or_else(|e| panic!("Failed to send: {:?}", e));
     });
@@ -336,34 +334,25 @@ impl TokioP2PNetwork {
 }
 
 impl P2PNetwork for TokioP2PNetwork {
-    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
         node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync,
     {
-        send_internal::<BUFFER_SIZE, MsgT, SerializerT>(
-            &mut self.runtime,
-            &self.sockets,
-            message,
-            serializer,
-            node,
-        );
+        send_internal(&mut self.runtime, &self.sockets, message, serializer, node);
     }
 
-    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
-        &mut self,
-        message: MsgT,
-        serializer: &SerializerT,
-    ) where
+    fn broadcast<MsgT, SerializerT>(&mut self, message: MsgT, serializer: &SerializerT)
+    where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync,
     {
         for node in self.sockets.keys() {
-            send_internal::<BUFFER_SIZE, MsgT, SerializerT>(
+            send_internal(
                 &mut self.runtime,
                 &self.sockets,
                 *dyn_clone::clone_box(&message),

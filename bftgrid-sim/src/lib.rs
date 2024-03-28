@@ -1,6 +1,5 @@
 use std::{
     collections::{BinaryHeap, HashMap},
-    error::Error,
     fmt::Debug,
     marker::PhantomData,
     mem,
@@ -11,7 +10,8 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler, UntypedHandlerBox,
+    AResult, ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler,
+    UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -541,14 +541,14 @@ impl ActorSystem for Simulation {
 
 #[async_trait]
 impl P2PNetwork for Simulation {
-    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         _serializer: &SerializerT,
         to_node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -563,13 +563,10 @@ impl P2PNetwork for Simulation {
             })
     }
 
-    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
-        &mut self,
-        message: MsgT,
-        _serializer: &SerializerT,
-    ) where
+    fn broadcast<MsgT, SerializerT>(&mut self, message: MsgT, _serializer: &SerializerT)
+    where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {
