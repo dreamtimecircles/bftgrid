@@ -15,8 +15,8 @@ pub enum ActorControl {
     Exit(),
 }
 
-pub trait TypedHandler<'msg>: Send + Debug {
-    type MsgT: ActorMsg + 'msg;
+pub trait TypedHandler: Send + Debug {
+    type MsgT: ActorMsg;
 
     fn receive(&mut self, message: Self::MsgT) -> Option<ActorControl>;
 }
@@ -33,23 +33,25 @@ impl Display for MessageNotSupported {
 
 impl Error for MessageNotSupported {}
 
-pub trait UntypedHandler<'msg>: Send + Debug {
+pub type AnActorMsg = Box<dyn ActorMsg>;
+
+pub trait UntypedHandler: Send + Debug {
     fn receive_untyped(
         &mut self,
-        message: Box<dyn ActorMsg + 'msg>,
+        message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
 
-pub type UntypedHandlerBox = Box<dyn UntypedHandler<'static>>;
+pub type UntypedHandlerBox = Box<dyn UntypedHandler>;
 
-impl<'msg, MsgT, HandlerT> UntypedHandler<'msg> for HandlerT
+impl<MsgT, HandlerT> UntypedHandler for HandlerT
 where
-    MsgT: ActorMsg + 'msg,
-    HandlerT: TypedHandler<'msg, MsgT = MsgT>,
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT>,
 {
     fn receive_untyped(
         &mut self,
-        message: Box<dyn ActorMsg + 'msg>,
+        message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
         match message.downcast::<HandlerT::MsgT>() {
             Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
@@ -63,64 +65,65 @@ pub trait Joinable<Output>: Send + Debug {
     fn is_finished(&mut self) -> bool;
 }
 
+pub type AnActorRef<MsgT, HandlerT> = Box<dyn ActorRef<MsgT, HandlerT>>;
+
 pub trait ActorRef<MsgT, HandlerT>: Send + Debug
 where
     MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>);
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>>;
+    fn new_ref(&self) -> AnActorRef<MsgT, HandlerT>;
 }
 
-impl<MsgT, HandlerT> Clone for Box<dyn ActorRef<MsgT, HandlerT>>
+impl<MsgT, HandlerT> Clone for AnActorRef<MsgT, HandlerT>
 where
-    MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn clone(&self) -> Self {
         self.new_ref()
     }
 }
 
+pub type AResult<T> = Result<T, Box<dyn Error>>;
+
 pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
 
     fn create<MsgT, HandlerT>(
         &mut self,
-        node_id: String,
-        name: String,
+        node_id: impl Into<String>,
+        name: impl Into<String>,
     ) -> Self::ActorRefT<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT>;
 
-    fn set_handler<MsgT, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
+    fn set_handler<MsgT, HandlerT: TypedHandler<MsgT = MsgT>>(
         &mut self,
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT>;
 }
 
 pub trait P2PNetwork: Clone {
-    fn send<const BUFFER_SIZE: usize, MsgT, SerializerT>(
+    fn send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: &str,
+        node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync;
 
-    fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
-        &mut self,
-        message: MsgT,
-        serializer: &SerializerT,
-    ) where
+    fn broadcast<MsgT, SerializerT>(&mut self, message: MsgT, serializer: &SerializerT)
+    where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
+        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync;
 }

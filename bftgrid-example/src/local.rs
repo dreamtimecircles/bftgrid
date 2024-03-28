@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 
-use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
-use bftgrid_mt::{ThreadActorSystem, TokioActorSystem};
+use bftgrid_core::{
+    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
+};
+use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
 #[derive(Clone, Debug)]
 struct Ping();
@@ -12,7 +14,7 @@ struct Actor1ToActor2<ActorSystemT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
-    pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
+    pub actor1_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
 }
 
 impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
@@ -25,10 +27,10 @@ struct Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
-    self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
+    self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
     node_id: String,
     actor_system: ActorSystemT,
-    actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
+    actor2_ref: AnActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>,
     ping_count: u8,
     spawn_count: u8,
 }
@@ -38,14 +40,14 @@ where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send,
 {
     fn new(
-        self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
-        node_id: String,
+        self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
+        node_id: impl Into<String>,
         actor_system: ActorSystemT,
-        actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
+        actor2_ref: AnActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>,
     ) -> Actor1<ActorSystemT> {
         Actor1 {
             self_ref,
-            node_id,
+            node_id: node_id.into(),
             actor_system,
             actor2_ref,
             ping_count: 0,
@@ -73,7 +75,7 @@ where
     }
 }
 
-impl<Actor1ActorSystemT> TypedHandler<'_> for Actor2<Actor1ActorSystemT>
+impl<Actor1ActorSystemT> TypedHandler for Actor2<Actor1ActorSystemT>
 where
     Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
@@ -87,7 +89,7 @@ where
     }
 }
 
-impl<ActorSystemT> TypedHandler<'_> for Actor1<ActorSystemT>
+impl<ActorSystemT> TypedHandler for Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
@@ -185,16 +187,16 @@ where
     Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystem + 'static,
 {
-    let mut actor1_ref = actor1_actor_system.create("node".into(), "actor1".into());
+    let mut actor1_ref = actor1_actor_system.create("node", "actor1");
     let actor1_ref_copy = actor1_ref.new_ref();
-    let mut actor2_ref = actor2_actor_system.create("node".into(), "actor2".into());
+    let mut actor2_ref = actor2_actor_system.create("node", "actor2");
     let actor2_ref_copy = actor2_ref.new_ref();
     actor2_actor_system.set_handler(&mut actor2_ref, Actor2::new());
     actor1_actor_system.set_handler(
         &mut actor1_ref,
         Actor1::new(
             actor1_ref_copy,
-            "node".into(),
+            "node",
             actor1_actor_system.clone(),
             actor2_ref_copy,
         ),
@@ -236,7 +238,7 @@ mod tests {
     #[test]
     fn simulation() {
         let mut topology = HashMap::new();
-        topology.insert("node".into(), NodeDescriptor::new(None, None));
+        topology.insert("node".into(), NodeDescriptor::default());
         let start = Instant::now();
         let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
         let System { mut actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
