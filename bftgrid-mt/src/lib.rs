@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    error::Error,
     fmt::Debug,
     mem,
     sync::{
@@ -423,7 +424,10 @@ pub struct TokioNetworkNode {
 }
 
 impl TokioNetworkNode {
-    pub fn new(handler: Arc<Mutex<UntypedHandlerBox>>, socket: UdpSocket) -> anyhow::Result<Self> {
+    pub fn new(
+        handler: Arc<Mutex<UntypedHandlerBox>>,
+        socket: UdpSocket,
+    ) -> Result<Self, Box<dyn Error>> {
         Ok(TokioNetworkNode { handler, socket })
     }
 
@@ -433,7 +437,7 @@ impl TokioNetworkNode {
     ) -> TokioJoinHandle<()>
     where
         MsgT: ActorMsg,
-        DeT: Fn(&mut [u8]) -> anyhow::Result<MsgT> + Send + 'static,
+        DeT: Fn(&mut [u8]) -> Result<MsgT, Box<dyn Error>> + Send + 'static,
     {
         tokio::spawn(async move {
             let mut data = [0u8; BUFFER_SIZE];
@@ -473,7 +477,7 @@ fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
     node: &str,
 ) where
     MsgT: ActorMsg,
-    SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize>,
+    SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>>,
 {
     println!("Sending to {}", node);
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -540,7 +544,7 @@ impl P2PNetwork for TokioP2PNetwork {
         node: &str,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
+        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
     {
         send_internal::<BUFFER_SIZE, MsgT, SerializerT>(
             &mut self.runtime,
@@ -557,7 +561,7 @@ impl P2PNetwork for TokioP2PNetwork {
         serializer: &SerializerT,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
+        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
     {
         for node in self.sockets.keys() {
             send_internal::<BUFFER_SIZE, MsgT, SerializerT>(

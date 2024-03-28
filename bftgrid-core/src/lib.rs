@@ -114,7 +114,7 @@ pub trait P2PNetwork: Clone {
         node: &str,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
+        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync;
 
     fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
@@ -122,5 +122,5 @@ pub trait P2PNetwork: Clone {
         serializer: &SerializerT,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync;
+        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync;
 }

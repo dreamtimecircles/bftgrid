@@ -1,5 +1,6 @@
 use std::{
     collections::{BinaryHeap, HashMap},
+    error::Error,
     fmt::Debug,
     marker::PhantomData,
     mem,
@@ -519,7 +520,7 @@ impl P2PNetwork for Simulation {
         to_node: &str,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
+        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -540,7 +541,7 @@ impl P2PNetwork for Simulation {
         _serializer: &SerializerT,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> anyhow::Result<usize> + Sync,
+        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         for node_name in self.topology.lock().unwrap().keys() {

@@ -60,7 +60,7 @@ where
             0 => {
                 println!("Actor1 received first ping, sending ping to Actor2 over the network");
                 let mut out = self.network_out.clone();
-                out.send::<0, _, _>(Ping {}, &|_msg, _bytes| anyhow::Ok(0), "localhost:5002");
+                out.send::<0, _, _>(Ping {}, &|_msg, _bytes| Ok(0), "localhost:5002");
                 None
             }
             1 => {
@@ -129,7 +129,7 @@ where
     fn receive(&mut self, msg: Self::MsgT) -> Option<ActorControl> {
         println!("Actor2 received ping over the network, replying with a ping over the network");
         let mut out = self.network_out.clone();
-        out.send::<0, _, _>(msg, &|_msg, _bytes| anyhow::Ok(0), "localhost:5001");
+        out.send::<0, _, _>(msg, &|_msg, _bytes| Ok(0), "localhost:5001");
         println!("Actor2 sent ping, exiting");
         Some(ActorControl::Exit())
     }
