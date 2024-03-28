@@ -36,7 +36,7 @@ where
 pub struct ThreadActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     actor_system: ThreadActorSystem,
     tx: Sender<MsgT>,
@@ -47,7 +47,7 @@ where
 impl<MsgT, HandlerT> Joinable<()> for ThreadActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn join(self) {
         let (close_mutex, cvar) = &*self.close_cond;
@@ -66,8 +66,8 @@ where
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for ThreadActor<MsgT, HandlerT>
 where
-    MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
@@ -137,8 +137,8 @@ impl Joinable<()> for ThreadActorSystem {
 impl ActorSystem for ThreadActorSystem {
     type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
 
     fn create<MsgT, HandlerT>(
         &mut self,
@@ -146,8 +146,8 @@ impl ActorSystem for ThreadActorSystem {
         _node_id: impl Into<String>,
     ) -> ThreadActor<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         let (tx, rx) = mpsc::channel();
         let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<HandlerT>>>();
@@ -192,8 +192,8 @@ impl ActorSystem for ThreadActorSystem {
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         actor_ref
             .handler_tx

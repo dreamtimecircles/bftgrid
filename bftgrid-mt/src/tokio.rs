@@ -7,7 +7,7 @@ use std::{
 
 use bftgrid_core::{
     AResult, ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, P2PNetwork, TypedHandler,
-    UntypedHandlerBox,
+    UntypedHandler,
 };
 use tokio::{
     net::UdpSocket,
@@ -21,7 +21,7 @@ use crate::notify_close;
 pub struct TokioActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     actor_system: TokioActorSystem,
     tx: TUnboundedSender<MsgT>,
@@ -31,8 +31,8 @@ where
 
 impl<MsgT, HandlerT> Joinable<()> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn join(self) {
         let (close_mutex, cvar) = &*self.close_cond;
@@ -50,8 +50,8 @@ where
 
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
 where
-    MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
@@ -150,8 +150,8 @@ impl TokioActorSystem {
 impl ActorSystem for TokioActorSystem {
     type ActorRefT<MsgT, HandlerT> = TokioActor<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static;
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
 
     fn create<MsgT, HandlerT>(
         &mut self,
@@ -159,8 +159,8 @@ impl ActorSystem for TokioActorSystem {
         _node_id: impl Into<String>,
     ) -> TokioActor<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<Arc<Mutex<HandlerT>>>();
@@ -208,8 +208,8 @@ impl ActorSystem for TokioActorSystem {
         actor_ref: &mut TokioActor<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         actor_ref
             .handler_tx
@@ -218,38 +218,33 @@ impl ActorSystem for TokioActorSystem {
     }
 }
 
-pub struct TokioNetworkNode {
-    handler: Arc<Mutex<UntypedHandlerBox>>,
+pub struct TokioNetworkNode<UntypedHandlerT: UntypedHandler> {
+    handler: UntypedHandlerT,
     socket: UdpSocket,
 }
 
-impl TokioNetworkNode {
-    pub fn new(handler: Arc<Mutex<UntypedHandlerBox>>, socket: UdpSocket) -> AResult<Self> {
+impl<UntypedHandlerT: UntypedHandler + 'static> TokioNetworkNode<UntypedHandlerT> {
+    pub fn new(handler: UntypedHandlerT, socket: UdpSocket) -> AResult<Self> {
         Ok(TokioNetworkNode { handler, socket })
     }
 
-    pub fn start<const BUFFER_SIZE: usize, MsgT, DeT>(
-        self,
-        deserializer: DeT,
-    ) -> TokioJoinHandle<()>
+    pub fn start<MsgT, DeT>(mut self, deserializer: DeT, buffer_size: usize) -> TokioJoinHandle<()>
     where
         MsgT: ActorMsg,
         DeT: Fn(&mut [u8]) -> AResult<MsgT> + Send + 'static,
     {
         tokio::spawn(async move {
-            let mut data = [0u8; BUFFER_SIZE];
+            let mut buf = vec![0; buffer_size];
             loop {
                 let valid_bytes = self
                     .socket
-                    .recv(&mut data[..])
+                    .recv(&mut buf[..])
                     .await
                     .unwrap_or_else(|e| panic!("Receive failed: {:?}", e));
-                let message = deserializer(&mut data[..valid_bytes])
+                let message = deserializer(&mut buf[..valid_bytes])
                     .unwrap_or_else(|e| panic!("Deserialization failed: {:?}", e));
                 if let Some(ActorControl::Exit()) = self
                     .handler
-                    .lock()
-                    .expect("Lock failed (poisoned)")
                     .receive_untyped(Box::new(message))
                     .expect("Unsupported message")
                 {

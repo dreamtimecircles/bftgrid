@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
+
 
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, MessageNotSupported, P2PNetwork,
-    TypedHandler, UntypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorMsg, AnActorRef, Joinable,
+    MessageNotSupported, P2PNetwork, TypedHandler, UntypedHandler,
 };
 
 use bftgrid_mt::{
@@ -21,7 +21,7 @@ where
     ActorSystemT: ActorSystem + 'static,
     P2PNetworkT: P2PNetwork,
 {
-    self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>>,
+    self_ref: AnActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>,
     node_id: String,
     actor_system: ActorSystemT,
     network_out: P2PNetworkT,
@@ -35,7 +35,7 @@ where
     P2PNetworkT: P2PNetwork,
 {
     fn new(
-        self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>>,
+        self_ref: AnActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>,
         node_id: impl Into<String>,
         actor_system: ActorSystemT,
         network_out: P2PNetworkT,
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<ActorSystemT, P2PNetworkT> TypedHandler<'_> for Actor1<ActorSystemT, P2PNetworkT>
+impl<ActorSystemT, P2PNetworkT> TypedHandler for Actor1<ActorSystemT, P2PNetworkT>
 where
     ActorSystemT: ActorSystem + Send + std::fmt::Debug + 'static,
     P2PNetworkT: P2PNetwork + Send + std::fmt::Debug + 'static,
@@ -123,7 +123,7 @@ where
     }
 }
 
-impl<P2PNetworkT> TypedHandler<'_> for Actor2<P2PNetworkT>
+impl<P2PNetworkT> TypedHandler for Actor2<P2PNetworkT>
 where
     P2PNetworkT: P2PNetwork + Send + std::fmt::Debug + 'static,
 {
@@ -144,10 +144,10 @@ where
     ActorSystemT: ActorSystem + 'static,
     P2PNetworkT: P2PNetwork,
 {
-    actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>>,
+    actor1_ref: AnActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>,
 }
 
-impl<'msg, ActorSystemT, P2PNetworkT> UntypedHandler<'msg>
+impl<ActorSystemT, P2PNetworkT> UntypedHandler
     for Node1P2pNetworkInputHandler<ActorSystemT, P2PNetworkT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
@@ -155,7 +155,7 @@ where
 {
     fn receive_untyped(
         &mut self,
-        message: Box<dyn ActorMsg + 'msg>,
+        message: AnActorMsg,
     ) -> Result<Option<ActorControl>, bftgrid_core::MessageNotSupported> {
         match message.downcast::<Ping>() {
             Ok(typed_message) => {
@@ -172,16 +172,16 @@ struct Node2P2pNetworkInputHandler<P2PNetworkT>
 where
     P2PNetworkT: P2PNetwork,
 {
-    actor2_ref: Box<dyn ActorRef<Ping, Actor2<P2PNetworkT>>>,
+    actor2_ref: AnActorRef<Ping, Actor2<P2PNetworkT>>,
 }
 
-impl<'msg, P2PNetworkT> UntypedHandler<'msg> for Node2P2pNetworkInputHandler<P2PNetworkT>
+impl<P2PNetworkT> UntypedHandler for Node2P2pNetworkInputHandler<P2PNetworkT>
 where
     P2PNetworkT: P2PNetwork + std::fmt::Debug + Send + 'static,
 {
     fn receive_untyped(
         &mut self,
-        message: Box<dyn ActorMsg + 'msg>,
+        message: AnActorMsg,
     ) -> Result<Option<ActorControl>, bftgrid_core::MessageNotSupported> {
         match message.downcast::<Ping>() {
             Ok(typed_message) => {
@@ -215,25 +215,25 @@ async fn main() {
     let mut actor2_ref = thread_actor_system.create("node2", "actor2");
     thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2));
     let node1 = TokioNetworkNode::new(
-        Arc::new(Mutex::new(Box::new(Node1P2pNetworkInputHandler {
+        Node1P2pNetworkInputHandler {
             actor1_ref: actor1_ref.new_ref(),
-        }))),
+        },
         UdpSocket::bind("localhost:5001")
             .await
             .expect("Cannot bind"),
     )
     .unwrap();
-    node1.start::<0, _, _>(|_buf| Ok(Ping {}));
+    node1.start(|_buf| Ok(Ping {}), 0);
     let node2 = TokioNetworkNode::new(
-        Arc::new(Mutex::new(Box::new(Node2P2pNetworkInputHandler {
+        Node2P2pNetworkInputHandler {
             actor2_ref: actor2_ref.new_ref(),
-        }))),
+        },
         UdpSocket::bind("localhost:5002")
             .await
             .expect("Cannot bind"),
     )
     .unwrap();
-    node2.start::<0, _, _>(|_buf| Ok(Ping {}));
+    node2.start(|_buf| Ok(Ping {}), 0);
     network1_handle.connect().await;
     network2_handle.connect().await;
     actor1_ref.send(Ping(), None);

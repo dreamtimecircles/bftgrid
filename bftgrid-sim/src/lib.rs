@@ -138,8 +138,8 @@ impl<MsgT, HandlerT> std::fmt::Debug for SimulatedActor<MsgT, HandlerT> {
 #[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for SimulatedActor<MsgT, HandlerT>
 where
-    MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         self.events_buffer.lock().unwrap().push(InternalEvent {
@@ -480,10 +480,8 @@ impl std::fmt::Debug for Simulation {
 }
 
 impl ActorSystem for Simulation {
-    type ActorRefT<
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
-    > = SimulatedActor<MsgT, HandlerT>;
+    type ActorRefT<MsgT: ActorMsg, HandlerT: TypedHandler<MsgT = MsgT> + 'static> =
+        SimulatedActor<MsgT, HandlerT>;
 
     fn create<MsgT, HandlerT>(
         &mut self,
@@ -491,8 +489,8 @@ impl ActorSystem for Simulation {
         name: impl Into<String>,
     ) -> SimulatedActor<MsgT, HandlerT>
     where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         let node_id_string = node_id.into();
         let name_string = name.into();
@@ -522,13 +520,13 @@ impl ActorSystem for Simulation {
         }
     }
 
-    fn set_handler<MsgT, HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static>(
+    fn set_handler<MsgT, HandlerT: TypedHandler<MsgT = MsgT> + 'static>(
         &mut self,
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
     ) where
-        MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
+        MsgT: ActorMsg,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         let mut topology = self.topology.lock().unwrap();
         let node = topology.get_mut(actor_ref.node_id.as_ref()).unwrap();

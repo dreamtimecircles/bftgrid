@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 
-use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_core::{
+    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
+};
 use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
 #[derive(Clone, Debug)]
@@ -12,7 +14,7 @@ struct Actor1ToActor2<ActorSystemT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
-    pub actor1_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
+    pub actor1_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
 }
 
 impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
@@ -25,10 +27,10 @@ struct Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
-    self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
+    self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
     node_id: String,
     actor_system: ActorSystemT,
-    actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
+    actor2_ref: AnActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>,
     ping_count: u8,
     spawn_count: u8,
 }
@@ -38,10 +40,10 @@ where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send,
 {
     fn new(
-        self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT>>>,
+        self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
         node_id: impl Into<String>,
         actor_system: ActorSystemT,
-        actor2_ref: Box<dyn ActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>>,
+        actor2_ref: AnActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>,
     ) -> Actor1<ActorSystemT> {
         Actor1 {
             self_ref,
@@ -73,7 +75,7 @@ where
     }
 }
 
-impl<Actor1ActorSystemT> TypedHandler<'_> for Actor2<Actor1ActorSystemT>
+impl<Actor1ActorSystemT> TypedHandler for Actor2<Actor1ActorSystemT>
 where
     Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
@@ -87,7 +89,7 @@ where
     }
 }
 
-impl<ActorSystemT> TypedHandler<'_> for Actor1<ActorSystemT>
+impl<ActorSystemT> TypedHandler for Actor1<ActorSystemT>
 where
     ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
 {
