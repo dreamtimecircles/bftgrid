@@ -82,6 +82,8 @@ where
     }
 }
 
+pub type AResult<T> = Result<T, Box<dyn Error>>;
+
 pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
@@ -90,8 +92,8 @@ pub trait ActorSystem: Clone {
 
     fn create<MsgT, HandlerT>(
         &mut self,
-        node_id: String,
-        name: String,
+        node_id: impl Into<String>,
+        name: impl Into<String>,
     ) -> Self::ActorRefT<MsgT, HandlerT>
     where
         MsgT: ActorMsg + 'static,
@@ -111,10 +113,10 @@ pub trait P2PNetwork: Clone {
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: &str,
+        node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync;
+        SerializerT: Fn(MsgT, &mut [u8]) -> AResult<usize> + Sync;
 
     fn broadcast<const BUFFER_SIZE: usize, MsgT, SerializerT>(
         &mut self,
@@ -122,5 +124,5 @@ pub trait P2PNetwork: Clone {
         serializer: &SerializerT,
     ) where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync;
+        SerializerT: Fn(MsgT, &mut [u8]) -> AResult<usize> + Sync;
 }

@@ -167,8 +167,8 @@ impl ActorSystem for TokioActorSystem {
 
     fn create<MsgT, HandlerT>(
         &mut self,
-        _name: String,
-        _node_id: String,
+        _name: impl Into<String>,
+        _node_id: impl Into<String>,
     ) -> TokioActor<MsgT, HandlerT>
     where
         MsgT: ActorMsg + 'static,
@@ -358,8 +358,8 @@ impl ActorSystem for ThreadActorSystem {
 
     fn create<MsgT, HandlerT>(
         &mut self,
-        _name: String,
-        _node_id: String,
+        _name: impl Into<String>,
+        _node_id: impl Into<String>,
     ) -> ThreadActor<MsgT, HandlerT>
     where
         MsgT: ActorMsg + 'static,
@@ -474,16 +474,16 @@ fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
     sockets: &HashMap<String, Arc<tokio::net::UdpSocket>>,
     message: MsgT,
     serializer: &SerializerT,
-    node: &str,
+    node: impl AsRef<str>,
 ) where
     MsgT: ActorMsg,
     SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>>,
 {
-    println!("Sending to {}", node);
+    println!("Sending to {}", node.as_ref());
     let mut buffer = [0u8; BUFFER_SIZE];
     let valid =
         serializer(message, &mut buffer).unwrap_or_else(|e| panic!("Unable to serialize: {:?}", e));
-    let socket_handle = sockets.get(node).expect("Node not found").clone();
+    let socket_handle = sockets.get(node.as_ref()).expect("Node not found").clone();
     spawn(runtime, async move {
         socket_handle
             .send(&buffer[..valid])
@@ -493,11 +493,12 @@ fn send_internal<const BUFFER_SIZE: usize, MsgT, SerializerT>(
 }
 
 impl TokioP2PNetwork {
-    pub async fn new(peers: Vec<String>) -> Self {
+    pub async fn new(peers: Vec<impl Into<String>>) -> Self {
         let v = peers.into_iter().map(|p| {
+            let peer = p.into();
             tokio::runtime::Handle::current().spawn(async move {
                 (
-                    p,
+                    peer,
                     Arc::new(
                         UdpSocket::bind("localhost:0")
                             .await
@@ -541,7 +542,7 @@ impl P2PNetwork for TokioP2PNetwork {
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: &str,
+        node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,

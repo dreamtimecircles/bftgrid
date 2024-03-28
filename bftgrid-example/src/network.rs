@@ -33,13 +33,13 @@ where
 {
     fn new(
         self_ref: Box<dyn ActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>>,
-        node_id: String,
+        node_id: impl Into<String>,
         actor_system: ActorSystemT,
         network_out: P2PNetworkT,
     ) -> Actor1<ActorSystemT, P2PNetworkT> {
         Actor1 {
             self_ref,
-            node_id,
+            node_id: node_id.into(),
             actor_system,
             network_out,
             ping_count: 0,
@@ -192,24 +192,24 @@ where
 
 #[tokio::main]
 async fn main() {
-    let network1 = TokioP2PNetwork::new(vec!["localhost:5002".into()]).await;
+    let network1 = TokioP2PNetwork::new(vec!["localhost:5002"]).await;
     let mut network1_handle = network1.clone();
-    let network2 = TokioP2PNetwork::new(vec!["localhost:5001".into()]).await;
+    let network2 = TokioP2PNetwork::new(vec!["localhost:5001"]).await;
     let mut network2_handle = network2.clone();
     let mut tokio_actor_system = TokioActorSystem::new();
     let mut thread_actor_system = ThreadActorSystem::new();
-    let mut actor1_ref = tokio_actor_system.create("node1".into(), "actor1".into());
+    let mut actor1_ref = tokio_actor_system.create("node1", "actor1");
     let actor1_ref_copy = actor1_ref.new_ref();
     tokio_actor_system.set_handler(
         &mut actor1_ref,
         Actor1::new(
             actor1_ref_copy,
-            "node1".into(),
+            "node1",
             tokio_actor_system.clone(),
             network1,
         ),
     );
-    let mut actor2_ref = thread_actor_system.create("node2".into(), "actor2".into());
+    let mut actor2_ref = thread_actor_system.create("node2", "actor2");
     thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2));
     let node1 = TokioNetworkNode::new(
         Arc::new(Mutex::new(Box::new(Node1P2pNetworkInputHandler {
@@ -246,7 +246,6 @@ mod tests {
     use std::{
         collections::HashMap,
         ops::Add,
-        sync::Arc,
         time::{Duration, Instant},
     };
 
@@ -260,26 +259,26 @@ mod tests {
         let mut topology = HashMap::new();
         topology.insert(
             "localhost:5001".into(),
-            NodeDescriptor::new(None, Some(Arc::new("actor1".into()))),
+            NodeDescriptor::new(None::<&str>, Some("actor1")),
         );
         topology.insert(
             "localhost:5002".into(),
-            NodeDescriptor::new(None, Some(Arc::new("actor2".into()))),
+            NodeDescriptor::new(None::<&str>, Some("actor2")),
         );
         let start = Instant::now();
         let mut simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
-        let mut actor1_ref = simulation.create("localhost:5001".into(), "actor1".into());
+        let mut actor1_ref = simulation.create("localhost:5001", "actor1");
         let actor1_ref_copy = actor1_ref.new_ref();
         simulation.set_handler(
             &mut actor1_ref,
             Actor1::new(
                 actor1_ref_copy,
-                "localhost:5001".into(),
+                "localhost:5001",
                 simulation.clone(),
                 simulation.clone(),
             ),
         );
-        let mut actor2_ref = simulation.create("localhost:5002".into(), "actor2".into());
+        let mut actor2_ref = simulation.create("localhost:5002", "actor2");
         simulation.set_handler(&mut actor2_ref, Actor2::new(simulation.clone()));
         actor1_ref.send(Ping(), None);
         let history = simulation.run();

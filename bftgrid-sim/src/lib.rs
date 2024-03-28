@@ -96,13 +96,13 @@ pub struct NodeDescriptor {
 }
 
 impl NodeDescriptor {
-    pub fn new(
-        client_request_handler: Option<Arc<String>>,
-        p2p_request_handler: Option<Arc<String>>,
+    pub fn new<C: Into<String>, P: Into<String>>(
+        client_request_handler: Option<C>,
+        p2p_request_handler: Option<P>,
     ) -> Self {
         NodeDescriptor {
-            client_request_handler,
-            p2p_request_handler,
+            client_request_handler: client_request_handler.map(|h| Arc::new(h.into())),
+            p2p_request_handler: p2p_request_handler.map(|h| Arc::new(h.into())),
             all_handlers: Default::default(),
         }
     }
@@ -110,7 +110,7 @@ impl NodeDescriptor {
 
 impl Default for NodeDescriptor {
     fn default() -> Self {
-        Self::new(Default::default(), Default::default())
+        Self::new::<String, String>(Default::default(), Default::default())
     }
 }
 
@@ -461,22 +461,24 @@ impl ActorSystem for Simulation {
 
     fn create<MsgT, HandlerT>(
         &mut self,
-        node_id: String,
-        name: String,
+        node_id: impl Into<String>,
+        name: impl Into<String>,
     ) -> SimulatedActor<MsgT, HandlerT>
     where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<'static, MsgT = MsgT> + 'static,
     {
+        let node_id_string = node_id.into();
+        let name_string = name.into();
         let handler_rc = Arc::new(Mutex::new(None));
-        let name_arc = Arc::new(name);
+        let name_arc = Arc::new(name_string);
         let name_arc2 = name_arc.clone();
         if self
             .topology
             .lock()
             .unwrap()
-            .get_mut(&node_id)
-            .unwrap_or_else(|| panic!("Node {:?} unknown", &node_id))
+            .get_mut(&node_id_string)
+            .unwrap_or_else(|| panic!("Node {:?} unknown", &node_id_string))
             .all_handlers
             .insert(name_arc, handler_rc.clone())
             .is_some()
@@ -485,7 +487,7 @@ impl ActorSystem for Simulation {
         }
         SimulatedActor {
             topology: self.topology.clone(),
-            node_id: Arc::new(node_id),
+            node_id: Arc::new(node_id_string),
             name: name_arc2,
             handler: handler_rc,
             events_buffer: self.internal_events_buffer.clone(),
@@ -517,7 +519,7 @@ impl P2PNetwork for Simulation {
         &mut self,
         message: MsgT,
         _serializer: &SerializerT,
-        to_node: &str,
+        to_node: impl AsRef<str>,
     ) where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT, &mut [u8]) -> Result<usize, Box<dyn Error>> + Sync,
@@ -529,7 +531,7 @@ impl P2PNetwork for Simulation {
             .push(SimulationEventAtInstant {
                 instant,
                 event: SimulationEvent::P2PSend {
-                    to_node: Arc::new(to_node.into()),
+                    to_node: Arc::new(to_node.as_ref().to_owned()),
                     event: Box::new(message),
                 },
             })
