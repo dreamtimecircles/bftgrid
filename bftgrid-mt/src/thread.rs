@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     mem,
     sync::{
-        mpsc::{self, RecvError, Sender},
+        mpsc::{self, Sender},
         Arc, Condvar, Mutex,
     },
     thread::{self, JoinHandle as ThreadJoinHandle},
@@ -78,6 +78,7 @@ where
             .push(ThreadJoinable {
                 underlying: thread::spawn(move || {
                     if let Some(delay_duration) = delay {
+                        log::debug!("Delaying send by {:?}", delay_duration);
                         thread::sleep(delay_duration);
                     }
                     sender.send(message).ok().unwrap()
@@ -120,6 +121,7 @@ impl Joinable<()> for ThreadActorSystem {
         let mut tasks = vec![];
         mem::swap(&mut *locked_tasks, &mut tasks);
         drop(locked_tasks); // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        log::info!("Thread actor system joining {} tasks", tasks.len());
         for t in tasks {
             t.join();
         }
@@ -142,8 +144,8 @@ impl ActorSystem for ThreadActorSystem {
 
     fn create<MsgT, HandlerT>(
         &mut self,
-        _name: impl Into<String>,
-        _node_id: impl Into<String>,
+        name: impl Into<String>,
+        node_id: impl Into<String>,
     ) -> ThreadActor<MsgT, HandlerT>
     where
         MsgT: ActorMsg,
@@ -153,15 +155,20 @@ impl ActorSystem for ThreadActorSystem {
         let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<HandlerT>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
+        let actor_name = name.into();
+        let actor_node_id = node_id.into();
         self.tasks.lock().unwrap().push(ThreadJoinable {
             underlying: thread::spawn(move || {
                 let mut current_handler = handler_rx.recv().unwrap();
+                log::debug!("Actor {} on node {} started", actor_name, actor_node_id);
                 loop {
                     if let Ok(new_handler) = handler_rx.try_recv() {
+                        log::debug!("Actor {} on node {}: new handler received", actor_name, actor_node_id);
                         current_handler = new_handler;
                     }
                     match rx.recv() {
-                        Err(RecvError) => {
+                        Err(_) => {
+                            log::info!("Actor {} on node {}: shutting down due to message receive channel having being closed", actor_name, actor_node_id);
                             notify_close(close_cond2);
                             return;
                         }
@@ -169,6 +176,7 @@ impl ActorSystem for ThreadActorSystem {
                             if let Some(control) = current_handler.lock().unwrap().receive(m) {
                                 match control {
                                     ActorControl::Exit() => {
+                                        log::info!("Actor {} on node {}: closing requested by handler, shutting it down", actor_name, actor_node_id);
                                         notify_close(close_cond2);
                                         return;
                                     }
