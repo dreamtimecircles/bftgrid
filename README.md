@@ -5,4 +5,12 @@ An actor-like framework with support for simulation testing to implement and tes
 ## TODO before publishing
 
 - [ ] Docs
-- [ ] Unit tests?
+
+## TODO when publishing
+
+- [ ] CI
+
+## TODO after publishing
+
+- [ ] Example protocol impl.
+- [ ] Make P2PNetworkError independent from runtime framework
