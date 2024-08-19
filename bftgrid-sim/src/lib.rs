@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use bftgrid_core::{
-    AResult, ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, TypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, P2PNetworkResult, TypedHandler,
     UntypedHandlerBox,
 };
 use rand_chacha::{
@@ -539,14 +539,15 @@ impl ActorSystem for Simulation {
 
 #[async_trait]
 impl P2PNetwork for Simulation {
-    fn send<MsgT, SerializerT>(
+    fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         _serializer: &SerializerT,
         to_node: impl AsRef<str>,
-    ) where
+    ) -> P2PNetworkResult<()>
+    where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync,
+        SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
     {
         let instant = self.instant_of_p2p_request_send();
         self.events_queue
@@ -558,26 +559,7 @@ impl P2PNetwork for Simulation {
                     to_node: Arc::new(to_node.as_ref().to_owned()),
                     event: Box::new(message),
                 },
-            })
-    }
-
-    fn broadcast<MsgT, SerializerT>(&mut self, message: MsgT, _serializer: &SerializerT)
-    where
-        MsgT: ActorMsg,
-        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync,
-    {
-        let instant = self.instant_of_p2p_request_send();
-        for node_name in self.topology.lock().unwrap().keys() {
-            self.events_queue
-                .lock()
-                .unwrap()
-                .push(SimulationEventAtInstant {
-                    instant,
-                    event: SimulationEvent::P2PSend {
-                        to_node: Arc::new(node_name.clone()),
-                        event: dyn_clone::clone_box(&message),
-                    },
-                })
-        }
+            });
+        Ok(())
     }
 }

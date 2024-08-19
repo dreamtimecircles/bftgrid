@@ -1,11 +1,15 @@
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    io,
+    sync::Arc,
     time::Duration,
 };
 
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::{clone_trait_object, DynClone};
+use thiserror::Error;
+use tokio::task::JoinError;
 
 pub trait ActorMsg: DynClone + Downcast + Send + Debug {}
 clone_trait_object!(ActorMsg);
@@ -86,8 +90,6 @@ where
     }
 }
 
-pub type AResult<T> = Result<T, Box<dyn Error>>;
-
 pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
@@ -112,18 +114,26 @@ pub trait ActorSystem: Clone {
         HandlerT: TypedHandler<MsgT = MsgT>;
 }
 
+#[derive(Error, Debug, Clone)]
+pub enum P2PNetworkError {
+    #[error("I/O error")]
+    Io(#[from] Arc<io::Error>),
+    #[error("Join error")]
+    Join(#[from] Arc<JoinError>),
+    #[error("Actor not found")]
+    ActorNotFound(String),
+}
+
+pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
+
 pub trait P2PNetwork: Clone {
-    fn send<MsgT, SerializerT>(
+    fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
         node: impl AsRef<str>,
-    ) where
-        MsgT: ActorMsg,
-        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync;
-
-    fn broadcast<MsgT, SerializerT>(&mut self, message: MsgT, serializer: &SerializerT)
+    ) -> P2PNetworkResult<()>
     where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT) -> AResult<Vec<u8>> + Sync;
+        SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync;
 }

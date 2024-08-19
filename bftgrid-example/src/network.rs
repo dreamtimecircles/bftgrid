@@ -1,5 +1,3 @@
-
-
 use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorMsg, AnActorRef, Joinable,
     MessageNotSupported, P2PNetwork, TypedHandler, UntypedHandler,
@@ -63,7 +61,7 @@ where
             0 => {
                 println!("Actor1 received first ping, sending ping to Actor2 over the network");
                 let mut out = self.network_out.clone();
-                out.send(Ping {}, &|_msg| Ok(Vec::new()), "localhost:5002");
+                let _ = out.attempt_send(Ping {}, &|_msg| Ok(Vec::new()), "localhost:5002");
                 None
             }
             1 => {
@@ -132,7 +130,7 @@ where
     fn receive(&mut self, msg: Self::MsgT) -> Option<ActorControl> {
         println!("Actor2 received ping over the network, replying with a ping over the network");
         let mut out = self.network_out.clone();
-        out.send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");
+        let _ = out.attempt_send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");
         println!("Actor2 sent ping, exiting");
         Some(ActorControl::Exit())
     }
@@ -196,9 +194,7 @@ where
 #[tokio::main]
 async fn main() {
     let network1 = TokioP2PNetwork::new(vec!["localhost:5002"]).await;
-    let mut network1_handle = network1.clone();
     let network2 = TokioP2PNetwork::new(vec!["localhost:5001"]).await;
-    let mut network2_handle = network2.clone();
     let mut tokio_actor_system = TokioActorSystem::new();
     let mut thread_actor_system = ThreadActorSystem::new();
     let mut actor1_ref = tokio_actor_system.create("node1", "actor1");
@@ -223,7 +219,7 @@ async fn main() {
             .expect("Cannot bind"),
     )
     .unwrap();
-    node1.start(|_buf| Ok(Ping {}), 0);
+    node1.start(|_buf| Ok(Ping {}), 0).unwrap();
     let node2 = TokioNetworkNode::new(
         Node2P2pNetworkInputHandler {
             actor2_ref: actor2_ref.new_ref(),
@@ -233,9 +229,7 @@ async fn main() {
             .expect("Cannot bind"),
     )
     .unwrap();
-    node2.start(|_buf| Ok(Ping {}), 0);
-    network1_handle.connect().await;
-    network2_handle.connect().await;
+    node2.start(|_buf| Ok(Ping {}), 0).unwrap();
     actor1_ref.send(Ping(), None);
     actor2_ref.join();
     println!("Joined Actor2");
