@@ -38,10 +38,7 @@ jobs:
             ~/.cargo/registry/cache
             target
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('Cargo.lock') }}
-      - run: sudo apt install -y protobuf-compiler libprotobuf-dev
-      - name: Run the short-circuit benchmark
-        run: |
-          cargo run --bin bft-bench-shortcircuit -- --config bft-bench-shortcircuit/Benchmark.example.toml
+        run: sudo apt install -y protobuf-compiler libprotobuf-dev
       - name: Generate test report
         id: test
         run: |
