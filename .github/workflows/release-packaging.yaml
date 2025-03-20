@@ -21,10 +21,9 @@ jobs:
       - run: sudo apt install -y protobuf-compiler libprotobuf-dev
       - name: Release Build
         run: |
-          cd rust
           cargo build --release
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v2
         with:
           name: ${{ env.PROJECT_NAME_UNDERSCORE }}
-          path: rust/target/release/${{ env.PROJECT_NAME_UNDERSCORE }}
+          path: target/release/${{ env.PROJECT_NAME_UNDERSCORE }}

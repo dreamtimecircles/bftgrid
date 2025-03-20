@@ -10,17 +10,20 @@ jobs:
   test:
     name: Test
     env:
-      PROJECT_NAME_UNDERSCORE: bft_bench
       CARGO_INCREMENTAL: 0
-      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort
-      RUSTDOCFLAGS: -Cpanic=abort
+      RUSTFLAGS: -Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Coverflow-checks=off -Clink-dead-code -Zpanic_abort_tests -Cpanic=abort
+      TEST_REPORT_FILE: "target/debug/test_results.xml"
+      COVERAGE_REPORT_FILE: "target/debug/lcov.info"
+      BINARY_DIR: "target/debug"
+      GRCOV_IGNORE_OPTION: '--ignore build.rs --ignore "/*" --ignore "[a-zA-Z]:/*"'
+      GRCOV_EXCLUDE_OPTION: '--excl-br-line "^\s*((debug_)?assert(_eq|_ne)?!|#\[derive\()"'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: nightly # To use Z options
           override: true
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -33,30 +36,36 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-            rust/target
+            target
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('Cargo.lock') }}
       - run: sudo apt install -y protobuf-compiler libprotobuf-dev
       - name: Run the short-circuit benchmark
         run: |
-          cd rust
           cargo run --bin bft-bench-shortcircuit -- --config bft-bench-shortcircuit/Benchmark.example.toml
-      - name: Generate test result and coverage report
+      - name: Generate test report
+        id: test
         run: |
-          cargo install cargo2junit grcov
-          cd rust
-          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json | cargo2junit > results.xml
-          zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`
-          grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" --ignore "tests/*" -o lcov.info
+          cargo install cargo2junit
+          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json | cargo2junit > ${TEST_REPORT_FILE}
+          echo "report=${TEST_REPORT_FILE}" >> $GITHUB_OUTPUT
+      - name: Generate coverage report
+        id: coverage
+        run: |
+          cargo install grcov
+          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json | cargo2junit > ${TEST_REPORT_FILE}
+          grcov . -s . --binary-path $BINARY_DIR --output-type lcov --output-path "${COVERAGE_REPORT_FILE}" --branch $GRCOV_IGNORE_OPTION $GRCOV_EXCLUDE_OPTION
+          echo "report=${COVERAGE_REPORT_FILE}" >> $GITHUB_OUTPUT
       - name: Upload test results
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           check_name: Test Results
+          files: ${{ steps.test.outputs.report }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          files: rust/results.xml
-      - name: Upload to CodeCov
-        uses: codecov/codecov-action@v1
+      - name: Upload code coverage to CodeCov
+        uses: codecov/codecov-action@v5
         with:
-          # required for private repositories:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: rust/lcov.info
+          files: ${{ steps.coverage.outputs.report }}
           fail_ci_if_error: true
+        env:
+          # required for private repositories:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
