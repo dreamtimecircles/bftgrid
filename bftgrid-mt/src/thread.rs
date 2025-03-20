@@ -137,7 +137,8 @@ impl Joinable<()> for ThreadActorSystem {
 }
 
 impl ActorSystem for ThreadActorSystem {
-    type ActorRefT<MsgT, HandlerT> = ThreadActor<MsgT, HandlerT>
+    type ActorRefT<MsgT, HandlerT>
+        = ThreadActor<MsgT, HandlerT>
     where
         MsgT: ActorMsg,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static;

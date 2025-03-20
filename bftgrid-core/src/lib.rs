@@ -6,8 +6,8 @@ use std::{
     time::Duration,
 };
 
-use downcast_rs::{impl_downcast, Downcast};
-use dyn_clone::{clone_trait_object, DynClone};
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_trait_object};
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -105,7 +105,7 @@ pub trait ActorSystem: Clone {
         MsgT: ActorMsg,
         HandlerT: TypedHandler<MsgT = MsgT>;
 
-    fn set_handler<MsgT, HandlerT: TypedHandler<MsgT = MsgT>>(
+    fn set_handler<MsgT, HandlerT>(
         &mut self,
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
