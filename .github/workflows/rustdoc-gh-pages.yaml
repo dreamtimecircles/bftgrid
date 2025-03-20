@@ -25,7 +25,6 @@ jobs:
       - name: Build rustdoc
         run: |
           sudo apt install -y protobuf-compiler libprotobuf-dev
-          cd rust
           RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc
 
       - name: Deploy rustdoc do GitHub Pages

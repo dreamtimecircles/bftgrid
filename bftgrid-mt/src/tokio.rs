@@ -158,7 +158,8 @@ impl TokioActorSystem {
 }
 
 impl ActorSystem for TokioActorSystem {
-    type ActorRefT<MsgT, HandlerT> = TokioActor<MsgT, HandlerT>
+    type ActorRefT<MsgT, HandlerT>
+        = TokioActor<MsgT, HandlerT>
     where
         MsgT: ActorMsg,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static;

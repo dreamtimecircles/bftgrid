@@ -520,7 +520,7 @@ impl ActorSystem for Simulation {
         }
     }
 
-    fn set_handler<MsgT, HandlerT: TypedHandler<MsgT = MsgT> + 'static>(
+    fn set_handler<MsgT, HandlerT>(
         &mut self,
         actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
         handler: HandlerT,
