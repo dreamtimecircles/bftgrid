@@ -12,7 +12,7 @@ bftgrid-mt = { path = "../bftgrid-mt" }
 bftgrid-sim = { path = "../bftgrid-sim" }
 
 [[bin]]
-name = "bftgrid-local-example"
+name = "bftgrid-sim-example"
 path = "src/local.rs"
 
 [[bin]]

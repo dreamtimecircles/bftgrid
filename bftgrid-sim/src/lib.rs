@@ -1,3 +1,5 @@
+//! Single-threaded simulation of a network of actors.
+
 use std::{
     collections::{BinaryHeap, HashMap},
     fmt::Debug,

@@ -30,4 +30,4 @@ jobs:
       - name: Deploy rustdoc do GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: rust/target/doc
+          folder: target/doc

@@ -1,3 +1,7 @@
+//! An actor framework geared towards BFT ordering libraries with support for deterministic simulation testing.
+//! It also allows writing a generic overall system construction logic independent from the specific actor system used.
+//! Every actor is managed by a single actor system but can interact with actors managed by other actor systems.
+
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
@@ -19,6 +23,8 @@ pub enum ActorControl {
     Exit(),
 }
 
+/// A [`TypedHandler`] is an actor that can handle messages of a specific type
+/// and optionally return an [`ActorControl`] message.
 pub trait TypedHandler: Send + Debug {
     type MsgT: ActorMsg;
 
@@ -28,7 +34,6 @@ pub trait TypedHandler: Send + Debug {
 #[derive(Debug, Clone)]
 pub struct MessageNotSupported();
 
-// Errors should be printable.
 impl Display for MessageNotSupported {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(f, "Message not supported")
@@ -39,6 +44,8 @@ impl Error for MessageNotSupported {}
 
 pub type AnActorMsg = Box<dyn ActorMsg>;
 
+/// An [`UntypedHandler`] is an actor handler that can receive messages of any type,
+/// although it may refuse to handle some of them.
 pub trait UntypedHandler: Send + Debug {
     fn receive_untyped(
         &mut self,
@@ -48,6 +55,8 @@ pub trait UntypedHandler: Send + Debug {
 
 pub type UntypedHandlerBox = Box<dyn UntypedHandler>;
 
+/// A blanket [`UntypedHandler`] implementation for [`TypedHandler`]
+/// to allow any typed actor to be used as a network input actor.
 impl<MsgT, HandlerT> UntypedHandler for HandlerT
 where
     MsgT: ActorMsg,
@@ -64,6 +73,8 @@ where
     }
 }
 
+/// A [`Joinable`] can be awaited for completion.
+/// Specific types of [`ActorRef`] and [`ActorSystem`] can be joined to wait for their completion.
 pub trait Joinable<Output>: Send + Debug {
     fn join(self) -> Output;
     fn is_finished(&mut self) -> bool;
@@ -71,6 +82,8 @@ pub trait Joinable<Output>: Send + Debug {
 
 pub type AnActorRef<MsgT, HandlerT> = Box<dyn ActorRef<MsgT, HandlerT>>;
 
+/// An [`ActorRef`] can asynchronously send messages to the underlying actor, optionally with a delay, and create new actor references.
+/// Actor implementations can use [`ActorRef`]s to send messages to themselves and to other actors.
 pub trait ActorRef<MsgT, HandlerT>: Send + Debug
 where
     MsgT: ActorMsg + 'static,
@@ -90,6 +103,10 @@ where
     }
 }
 
+/// An [`ActorSystem`] allows spawning actors by creating an [`ActoRef`] a setting its handler.
+/// The handler of the underlying actor can also be changed at any time.
+/// An [`ActorSystem`] can be cloned to obtain new references to it.
+/// Actors can used [`ActorSystem`] references to spawn new actors and even to change their own handlers.
 pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
@@ -126,6 +143,7 @@ pub enum P2PNetworkError {
 
 pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
 
+/// A [`P2PNetwork`] allows sending messages to other nodes in a P2P network.
 pub trait P2PNetwork: Clone {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
