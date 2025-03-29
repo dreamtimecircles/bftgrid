@@ -24,6 +24,7 @@ jobs:
 
       - name: Build rustdoc
         run: |
+          set -eo pipefail
           sudo apt install -y protobuf-compiler libprotobuf-dev
           RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc
 

@@ -42,12 +42,14 @@ jobs:
       - name: Generate test report
         id: test
         run: |
+          set -eo pipefail
           cargo install cargo2junit
           RUSTC_BOOTSTRAP=1 cargo test $CARGO_OPTIONS -- -Z unstable-options --format json --report-time | cargo2junit > ${TEST_REPORT_FILE}
           echo "report=${TEST_REPORT_FILE}" >> $GITHUB_OUTPUT
       - name: Generate coverage report
         id: coverage
         run: |
+          set -eo pipefail
           rustup component add llvm-tools-preview
           cargo install grcov
           RUSTC_BOOTSTRAP=1 cargo test $CARGO_OPTIONS -- -Z unstable-options --format json --report-time | cargo2junit > ${TEST_REPORT_FILE}
