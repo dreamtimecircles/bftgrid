@@ -23,6 +23,7 @@ jobs:
           override: true
 
       - name: Build rustdoc
+        shell: bash
         run: |
           sudo apt install -y protobuf-compiler libprotobuf-dev
           RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc
