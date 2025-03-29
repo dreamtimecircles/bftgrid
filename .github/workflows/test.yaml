@@ -41,15 +41,15 @@ jobs:
       - run: sudo apt install -y protobuf-compiler libprotobuf-dev
       - name: Generate test report
         id: test
+        shell: bash --noprofile --norc -exo pipefail {0}
         run: |
-          set -eox pipefail
           cargo install cargo2junit
           RUSTC_BOOTSTRAP=1 cargo test $CARGO_OPTIONS -- -Z unstable-options --format json --report-time | cargo2junit > ${TEST_REPORT_FILE}
           echo "report=${TEST_REPORT_FILE}" >> $GITHUB_OUTPUT
       - name: Generate coverage report
         id: coverage
+        shell: bash
         run: |
-          set -eo pipefail
           rustup component add llvm-tools-preview
           cargo install grcov
           RUSTC_BOOTSTRAP=1 cargo test $CARGO_OPTIONS -- -Z unstable-options --format json --report-time | cargo2junit > ${TEST_REPORT_FILE}
