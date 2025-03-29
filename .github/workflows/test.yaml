@@ -41,7 +41,7 @@ jobs:
       - run: sudo apt install -y protobuf-compiler libprotobuf-dev
       - name: Generate test report
         id: test
-        shell: bash --noprofile --norc -exo pipefail {0}
+        shell: bash
         run: |
           cargo install cargo2junit
           mkdir -p target/debug # Create the target directory for cargo2junit
