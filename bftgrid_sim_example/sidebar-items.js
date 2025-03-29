@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["build_system","main"],"struct":["Actor1","Actor1ToActor2","Actor2","Ping","System"]};
