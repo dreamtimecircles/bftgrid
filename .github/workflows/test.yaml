@@ -43,13 +43,13 @@ jobs:
         id: test
         run: |
           cargo install cargo2junit
-          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json | cargo2junit > ${TEST_REPORT_FILE}
+          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json
           echo "report=${TEST_REPORT_FILE}" >> $GITHUB_OUTPUT
       - name: Generate coverage report
         id: coverage
         run: |
           cargo install grcov
-          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json | cargo2junit > ${TEST_REPORT_FILE}
+          cargo test $CARGO_OPTIONS -- -Z unstable-options --format json # | cargo2junit > ${TEST_REPORT_FILE}
           grcov . -s . --binary-path $BINARY_DIR --output-type lcov --output-path "${COVERAGE_REPORT_FILE}" --branch $GRCOV_IGNORE_OPTION $GRCOV_EXCLUDE_OPTION
           echo "report=${COVERAGE_REPORT_FILE}" >> $GITHUB_OUTPUT
       - name: Upload test results
