@@ -6,6 +6,6 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
 bftgrid-core = { path = "../bftgrid-core" }
-async-trait = "0.1.77"
+async-trait = "0.1.88"
 rand_chacha = "0.9.0"
-dyn-clone = "1.0.17"
+dyn-clone = "1.0.19"
