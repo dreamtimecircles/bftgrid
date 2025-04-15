@@ -72,11 +72,15 @@ where
     }
 }
 
-/// A [`Joinable`] can be awaited for completion.
+/// A [`Task`] can be queried for completion.
+pub trait Task: Send + Debug {
+    fn is_finished(&self) -> bool;
+}
+
+/// A [`Joinable`] can be awaited for completion in a thread-blocking fashion.
 /// Specific types of [`ActorRef`] and [`ActorSystem`] can be joined to wait for their completion.
-pub trait Joinable<Output>: Send + Debug {
+pub trait Joinable<Output>: Task + Send + Debug {
     fn join(self) -> Output;
-    fn is_finished(&mut self) -> bool;
 }
 
 pub type AnActorRef<MsgT, HandlerT> = Box<dyn ActorRef<MsgT, HandlerT>>;

@@ -10,13 +10,28 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, TypedHandler};
+use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, Task, TypedHandler};
 
-use crate::notify_close;
+use crate::{cleanup_complete_tasks, notify_close};
 
 #[derive(Debug)]
 struct ThreadJoinable<T> {
     underlying: ThreadJoinHandle<T>,
+}
+
+impl<T> ThreadJoinable<T> {
+    fn new(underlying: ThreadJoinHandle<T>) -> ThreadJoinable<T> {
+        ThreadJoinable { underlying }
+    }
+}
+
+impl<T> Task for ThreadJoinable<T>
+where
+    T: Debug + Send,
+{
+    fn is_finished(&self) -> bool {
+        self.underlying.is_finished()
+    }
 }
 
 impl<T> Joinable<T> for ThreadJoinable<T>
@@ -25,10 +40,6 @@ where
 {
     fn join(self) -> T {
         self.underlying.join().unwrap()
-    }
-
-    fn is_finished(&mut self) -> bool {
-        self.underlying.is_finished()
     }
 }
 
@@ -44,6 +55,17 @@ where
     close_cond: Arc<(Mutex<bool>, Condvar)>,
 }
 
+impl<MsgT, HandlerT> Task for ThreadActor<MsgT, HandlerT>
+where
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+{
+    fn is_finished(&self) -> bool {
+        let (closed_mutex, _) = &*self.close_cond;
+        *closed_mutex.lock().unwrap()
+    }
+}
+
 impl<MsgT, HandlerT> Joinable<()> for ThreadActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
@@ -56,11 +78,6 @@ where
             closed = cvar.wait(closed).unwrap();
         }
     }
-
-    fn is_finished(&mut self) -> bool {
-        let (closed_mutex, _) = &*self.close_cond;
-        *closed_mutex.lock().unwrap()
-    }
 }
 
 #[async_trait]
@@ -71,19 +88,18 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        self.actor_system
-            .tasks
-            .lock()
-            .unwrap()
-            .push(ThreadJoinable {
-                underlying: thread::spawn(move || {
-                    if let Some(delay_duration) = delay {
-                        log::debug!("Delaying send by {:?}", delay_duration);
-                        thread::sleep(delay_duration);
-                    }
+        if let Some(delay_duration) = delay {
+            cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap()).push(
+                ThreadJoinable::new(thread::spawn(move || {
+                    log::debug!("Delaying send by {:?}", delay_duration);
+                    thread::sleep(delay_duration);
                     sender.send(message).ok().unwrap()
-                }),
-            });
+                })),
+            );
+        } else {
+            // No need to spawn a thread if no delay is needed, as the sender is non-blocking
+            sender.send(message).ok().unwrap()
+        }
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -115,24 +131,23 @@ impl Default for ThreadActorSystem {
     }
 }
 
+impl Task for ThreadActorSystem {
+    fn is_finished(&self) -> bool {
+        self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
+    }
+}
+
 impl Joinable<()> for ThreadActorSystem {
     fn join(self) {
         let mut locked_tasks = self.tasks.lock().unwrap();
         let mut tasks = vec![];
         mem::swap(&mut *locked_tasks, &mut tasks);
-        drop(locked_tasks); // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        drop(locked_tasks);
         log::info!("Thread actor system joining {} tasks", tasks.len());
         for t in tasks {
             t.join();
         }
-    }
-
-    fn is_finished(&mut self) -> bool {
-        self.tasks
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .all(|h| h.is_finished())
     }
 }
 
@@ -158,8 +173,7 @@ impl ActorSystem for ThreadActorSystem {
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
-        self.tasks.lock().unwrap().push(ThreadJoinable {
-            underlying: thread::spawn(move || {
+        cleanup_complete_tasks(self.tasks.lock().unwrap()).push(ThreadJoinable::new(thread::spawn(move || {
                 let mut current_handler = handler_rx.recv().unwrap();
                 log::debug!("Actor {} on node {} started", actor_name, actor_node_id);
                 loop {
@@ -187,7 +201,7 @@ impl ActorSystem for ThreadActorSystem {
                     }
                 }
             }),
-        });
+        ));
         ThreadActor {
             actor_system: self.clone(),
             tx,

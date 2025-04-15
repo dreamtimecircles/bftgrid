@@ -14,4 +14,4 @@ The examples can be run as follows:
 > cargo run --bin bftgrid-network-example
 ```
 
-Simulation tests are regular `cargo` tests and can be run as usual e.g. with `cargo test`.
+Simulation tests are regular tests and can be run as usual e.g. with `cargo test`.

@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Debug,
     io, mem,
     sync::{Arc, Condvar, Mutex},
     time::Duration,
@@ -7,7 +8,7 @@ use std::{
 
 use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, P2PNetwork, P2PNetworkError,
-    P2PNetworkResult, TypedHandler, UntypedHandler,
+    P2PNetworkResult, Task, TypedHandler, UntypedHandler,
 };
 use futures::future;
 use tokio::{
@@ -16,7 +17,27 @@ use tokio::{
     task::JoinHandle as TokioJoinHandle,
 };
 
-use crate::notify_close;
+use crate::{cleanup_complete_tasks, notify_close};
+
+#[derive(Debug)]
+struct TokioTask<T> {
+    underlying: TokioJoinHandle<T>,
+}
+
+impl<T> TokioTask<T> {
+    fn new(underlying: TokioJoinHandle<T>) -> TokioTask<T> {
+        TokioTask { underlying }
+    }
+}
+
+impl<T> Task for TokioTask<T>
+where
+    T: Debug + Send,
+{
+    fn is_finished(&self) -> bool {
+        self.underlying.is_finished()
+    }
+}
 
 #[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
@@ -30,6 +51,17 @@ where
     close_cond: Arc<(Mutex<bool>, Condvar)>,
 }
 
+impl<MsgT, HandlerT> Task for TokioActor<MsgT, HandlerT>
+where
+    MsgT: ActorMsg,
+    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+{
+    fn is_finished(&self) -> bool {
+        let (closed_mutex, _) = &*self.close_cond;
+        *closed_mutex.lock().unwrap()
+    }
+}
+
 impl<MsgT, HandlerT> Joinable<()> for TokioActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
@@ -41,11 +73,6 @@ where
         while !*closed {
             closed = cvar.wait(closed).unwrap();
         }
-    }
-
-    fn is_finished(&mut self) -> bool {
-        let (closed_mutex, _) = &*self.close_cond;
-        *closed_mutex.lock().unwrap()
     }
 }
 
@@ -63,7 +90,7 @@ where
             }
             sender.send(message).ok().unwrap()
         });
-        self.actor_system.tasks.lock().unwrap().push(t);
+        cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap()).push(TokioTask::new(t));
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -79,7 +106,7 @@ where
 #[derive(Clone, Debug)]
 pub struct TokioActorSystem {
     runtime: Option<Arc<tokio::runtime::Runtime>>,
-    tasks: Arc<Mutex<Vec<TokioJoinHandle<()>>>>,
+    tasks: Arc<Mutex<Vec<TokioTask<()>>>>,
 }
 
 impl TokioActorSystem {
@@ -144,16 +171,12 @@ impl TokioActorSystem {
         }
         log::info!("Tokio actor system joining {} tasks", tasks.len());
         for t in tasks {
-            t.await.unwrap();
+            t.underlying.await.unwrap();
         }
     }
 
     pub fn is_finished(&mut self) -> bool {
-        self.tasks
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .all(|h| h.is_finished())
+        self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
     }
 }
 
@@ -211,7 +234,7 @@ impl ActorSystem for TokioActorSystem {
                 }
             }
         });
-        self.tasks.lock().unwrap().push(t);
+        cleanup_complete_tasks(self.tasks.lock().unwrap()).push(TokioTask::new(t));
         TokioActor {
             actor_system: self.clone(),
             tx,
