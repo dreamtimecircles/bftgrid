@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorMsg, AnActorRef, Joinable,
     MessageNotSupported, P2PNetwork, TypedHandler, UntypedHandler,
@@ -155,7 +157,7 @@ where
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, bftgrid_core::MessageNotSupported> {
-        match message.downcast::<Ping>() {
+        match (message as Box<dyn Any>).downcast::<Ping>() {
             Ok(typed_message) => {
                 self.actor1_ref.send(*typed_message, None);
                 Result::Ok(None)
@@ -181,7 +183,7 @@ where
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, bftgrid_core::MessageNotSupported> {
-        match message.downcast::<Ping>() {
+        match (message as Box<dyn Any>).downcast::<Ping>() {
             Ok(typed_message) => {
                 self.actor2_ref.send(*typed_message, None);
                 Result::Ok(None)

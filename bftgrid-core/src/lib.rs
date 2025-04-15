@@ -3,6 +3,7 @@
 //! Every actor is managed by a single actor system but can interact with actors managed by other actor systems.
 
 use std::{
+    any::Any,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     io,
@@ -10,14 +11,12 @@ use std::{
     time::Duration,
 };
 
-use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_trait_object};
 use thiserror::Error;
 use tokio::task::JoinError;
 
-pub trait ActorMsg: DynClone + Downcast + Send + Debug {}
+pub trait ActorMsg: DynClone + Any + Send + Debug {}
 clone_trait_object!(ActorMsg);
-impl_downcast!(ActorMsg);
 
 pub enum ActorControl {
     Exit(),
@@ -66,7 +65,7 @@ where
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match message.downcast::<HandlerT::MsgT>() {
+        match (message as Box<dyn Any>).downcast::<HandlerT::MsgT>() {
             Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
             Err(_) => Result::Err(MessageNotSupported()),
         }
