@@ -102,10 +102,10 @@ where
     }
 }
 
-/// An [`ActorSystem`] allows spawning actors by creating an [`ActoRef`] a setting its handler.
+/// An [`ActorSystem`] allows spawning actors by creating an [`ActoRef`] and setting its handler.
 /// The handler of the underlying actor can also be changed at any time.
 /// An [`ActorSystem`] can be cloned to obtain new references to it.
-/// Actors can used [`ActorSystem`] references to spawn new actors and even to change their own handlers.
+/// Actors can use [`ActorSystem`] references to spawn new actors and even to change their own handlers.
 pub trait ActorSystem: Clone {
     type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
     where
