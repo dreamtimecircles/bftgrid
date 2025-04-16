@@ -100,7 +100,6 @@ where
     }
 }
 
-
 #[derive(Clone, Debug)]
 enum TokioRuntime {
     Current(tokio::runtime::Handle),
@@ -139,7 +138,9 @@ impl TokioActorSystem {
         F: core::future::Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        TokioTask { underlying: self.runtime.spawn(future) }
+        TokioTask {
+            underlying: self.runtime.spawn(future),
+        }
     }
 }
 
@@ -337,39 +338,6 @@ pub struct TokioP2PNetwork {
     sockets: HashMap<String, P2PNetworkResult<Arc<UdpSocket>>>,
 }
 
-fn attempt_send_internal<MsgT, SerializerT>(
-    runtime: &TokioRuntime,
-    sockets: &HashMap<String, P2PNetworkResult<Arc<tokio::net::UdpSocket>>>,
-    message: MsgT,
-    serializer: &SerializerT,
-    node: impl AsRef<str>,
-) -> P2PNetworkResult<()>
-where
-    MsgT: ActorMsg,
-    SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
-{
-    log::debug!("Sending to {}", node.as_ref());
-    let socket_handle = match sockets.get(node.as_ref()) {
-        Some(s) => (*s).clone(),
-        None => P2PNetworkResult::Err(P2PNetworkError::ActorNotFound(node.as_ref().to_owned())),
-    }?;
-    let serialized_message = serializer(message)?;
-    runtime.spawn(async move {
-        log::debug!("Starting network send");
-        match socket_handle.send(&serialized_message[..]).await {
-            Ok(_) => {
-                log::debug!("Message sent");
-                Ok(())
-            }
-            Err(e) => {
-                log::warn!("Failed to send message: {:?}", e);
-                Err(P2PNetworkError::Io(Arc::new(e)))
-            }
-        }
-    });
-    Ok(())
-}
-
 impl TokioP2PNetwork {
     pub async fn new(initial_peers: Vec<impl Into<String>>) -> Self {
         let initial_peer_addrs: Vec<String> = initial_peers.into_iter().map(|p| p.into()).collect(); // Consumed to produce result
@@ -417,6 +385,39 @@ impl P2PNetwork for TokioP2PNetwork {
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
     {
-        attempt_send_internal(&mut self.runtime, &self.sockets, message, serializer, node)
+        attempt_send_internal(&self.runtime, &self.sockets, message, serializer, node)
     }
+}
+
+fn attempt_send_internal<MsgT, SerializerT>(
+    runtime: &TokioRuntime,
+    sockets: &HashMap<String, P2PNetworkResult<Arc<tokio::net::UdpSocket>>>,
+    message: MsgT,
+    serializer: &SerializerT,
+    node: impl AsRef<str>,
+) -> P2PNetworkResult<()>
+where
+    MsgT: ActorMsg,
+    SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
+{
+    log::debug!("Sending to {}", node.as_ref());
+    let socket_handle = match sockets.get(node.as_ref()) {
+        Some(s) => (*s).clone(),
+        None => P2PNetworkResult::Err(P2PNetworkError::ActorNotFound(node.as_ref().to_owned())),
+    }?;
+    let serialized_message = serializer(message)?;
+    runtime.spawn(async move {
+        log::debug!("Starting network send");
+        match socket_handle.send(&serialized_message[..]).await {
+            Ok(_) => {
+                log::debug!("Message sent");
+                Ok(())
+            }
+            Err(e) => {
+                log::warn!("Failed to send message: {:?}", e);
+                Err(P2PNetworkError::Io(Arc::new(e)))
+            }
+        }
+    });
+    Ok(())
 }
