@@ -204,8 +204,8 @@ where
     System::new(actor1_ref, actor2_ref)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    env_logger::init();
     let thread_actor_system = ThreadActorSystem::new();
     let tokio_actor_system = TokioActorSystem::new();
     let System {
@@ -218,7 +218,7 @@ async fn main() {
     println!("Joined Actor2");
     actor1_ref.join();
     println!("Joined Actor1");
-    tokio_actor_system.join().await;
+    tokio_actor_system.join();
     thread_actor_system.join();
 }
 

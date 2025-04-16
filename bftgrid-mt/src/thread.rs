@@ -89,7 +89,7 @@ where
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
         if let Some(delay_duration) = delay {
-            cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap()).push(
+            cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap().as_mut()).push(
                 ThreadJoinable::new(thread::spawn(move || {
                     log::debug!("Delaying send by {:?}", delay_duration);
                     thread::sleep(delay_duration);
@@ -173,7 +173,7 @@ impl ActorSystem for ThreadActorSystem {
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
-        cleanup_complete_tasks(self.tasks.lock().unwrap()).push(ThreadJoinable::new(thread::spawn(move || {
+        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(ThreadJoinable::new(thread::spawn(move || {
                 let mut current_handler = handler_rx.recv().unwrap();
                 log::debug!("Actor {} on node {} started", actor_name, actor_node_id);
                 loop {

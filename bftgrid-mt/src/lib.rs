@@ -1,4 +1,4 @@
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex};
 
 use bftgrid_core::Task;
 
@@ -12,9 +12,7 @@ fn notify_close(close_cond: Arc<(Mutex<bool>, Condvar)>) {
     cvar.notify_all();
 }
 
-fn cleanup_complete_tasks<TaskT>(
-    mut tasks: MutexGuard<'_, Vec<TaskT>>,
-) -> MutexGuard<'_, Vec<TaskT>>
+fn cleanup_complete_tasks<TaskT>(tasks: &mut Vec<TaskT>) -> &mut Vec<TaskT>
 where
     TaskT: Task,
 {

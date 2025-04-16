@@ -22,12 +22,7 @@ use crate::{cleanup_complete_tasks, notify_close};
 #[derive(Debug)]
 struct TokioTask<T> {
     underlying: TokioJoinHandle<T>,
-}
-
-impl<T> TokioTask<T> {
-    fn new(underlying: TokioJoinHandle<T>) -> TokioTask<T> {
-        TokioTask { underlying }
-    }
+    runtime_handle: tokio::runtime::Handle,
 }
 
 impl<T> Task for TokioTask<T>
@@ -36,6 +31,15 @@ where
 {
     fn is_finished(&self) -> bool {
         self.underlying.is_finished()
+    }
+}
+
+impl<T> Joinable<T> for TokioTask<T>
+where
+    T: Debug + Send,
+{
+    fn join(self) -> T {
+        self.runtime_handle.block_on(self.underlying).unwrap()
     }
 }
 
@@ -90,7 +94,7 @@ where
             }
             sender.send(message).ok().unwrap()
         });
-        cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap()).push(TokioTask::new(t));
+        cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap().as_mut()).push(t);
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -117,7 +121,7 @@ impl TokioActorSystem {
         }
     }
 
-    fn spawn<F>(&mut self, future: F) -> tokio::task::JoinHandle<F::Output>
+    fn spawn<F>(&mut self, future: F) -> TokioTask<F::Output>
     where
         F: core::future::Future + Send + 'static,
         F::Output: Send + 'static,
@@ -126,30 +130,37 @@ impl TokioActorSystem {
     }
 }
 
-fn spawn<F>(
-    runtime: &mut Option<Arc<tokio::runtime::Runtime>>,
-    future: F,
-) -> tokio::task::JoinHandle<F::Output>
+fn spawn<F>(runtime: &mut Option<Arc<tokio::runtime::Runtime>>, future: F) -> TokioTask<F::Output>
 where
     F: core::future::Future + Send + 'static,
     F::Output: Send + 'static,
 {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
-            log::debug!("Current Tokio runtime found");
-            handle.spawn(future)
+            log::debug!("Current thread's Tokio runtime found");
+            TokioTask {
+                runtime_handle: handle.clone(),
+                underlying: handle.spawn(future),
+            }
         }
         Err(_) => match runtime {
             Some(r) => {
                 log::debug!("No current Tokio runtime available but one dedicated to the actor system was already created");
-                r.spawn(future)
+                TokioTask {
+                    runtime_handle: r.handle().clone(),
+                    underlying: r.spawn(future),
+                }
             }
             None => {
                 log::debug!("No current Tokio runtime and not created a dedicated one for the actor system yet, creating it");
                 let r = tokio::runtime::Runtime::new().unwrap();
+                let handle = r.handle().clone();
                 let res = r.spawn(future);
-                *runtime = Some(Arc::new(r));
-                res
+                *runtime = Some(r.into());
+                TokioTask {
+                    runtime_handle: handle,
+                    underlying: res,
+                }
             }
         },
     }
@@ -162,21 +173,40 @@ impl Default for TokioActorSystem {
 }
 
 impl TokioActorSystem {
-    pub async fn join(self) {
-        let mut tasks = vec![];
-        {
-            let mut locked_tasks = self.tasks.lock().unwrap();
-            mem::swap(&mut *locked_tasks, &mut tasks);
-            // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
-        }
-        log::info!("Tokio actor system joining {} tasks", tasks.len());
-        for t in tasks {
-            t.underlying.await.unwrap();
-        }
+    pub async fn join_async(self) {
+        join_tasks(self.tasks).await;
     }
 
     pub fn is_finished(&mut self) -> bool {
         self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
+    }
+}
+
+async fn join_tasks(tasks_to_join: Arc<Mutex<Vec<TokioTask<()>>>>) {
+    let mut tasks = vec![];
+    {
+        let mut locked_tasks = tasks_to_join.lock().unwrap();
+        mem::swap(&mut *locked_tasks, &mut tasks);
+        // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+    }
+    log::info!("Tokio actor system joining {} tasks", tasks.len());
+    for t in tasks {
+        t.underlying.await.unwrap();
+    }
+}
+
+impl Task for TokioActorSystem {
+    fn is_finished(&self) -> bool {
+        self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
+    }
+}
+
+impl Joinable<()> for TokioActorSystem {
+    fn join(self) {
+        let TokioActorSystem { runtime, tasks } = self;
+        if let Some(r) = runtime {
+            r.block_on(join_tasks(tasks));
+        }
     }
 }
 
@@ -234,7 +264,7 @@ impl ActorSystem for TokioActorSystem {
                 }
             }
         });
-        cleanup_complete_tasks(self.tasks.lock().unwrap()).push(TokioTask::new(t));
+        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(t);
         TokioActor {
             actor_system: self.clone(),
             tx,
@@ -278,7 +308,7 @@ impl<UntypedHandlerT: UntypedHandler + 'static> TokioNetworkNode<UntypedHandlerT
         DeT: Fn(&mut [u8]) -> P2PNetworkResult<MsgT> + Send + 'static,
     {
         let addr = self.socket.local_addr()?;
-        log::error!("Async actor netork server {} starting", addr);
+        log::info!("Async actor netork server {} starting", addr);
         Ok(tokio::spawn(async move {
             let mut buf = vec![0; buffer_size];
             loop {

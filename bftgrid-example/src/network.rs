@@ -195,6 +195,7 @@ where
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let network1 = TokioP2PNetwork::new(vec!["localhost:5002"]).await;
     let network2 = TokioP2PNetwork::new(vec!["localhost:5001"]).await;
     let mut tokio_actor_system = TokioActorSystem::new();
@@ -237,7 +238,7 @@ async fn main() {
     println!("Joined Actor2");
     actor1_ref.join();
     println!("Joined Actor1");
-    tokio_actor_system.join().await;
+    tokio_actor_system.join_async().await;
 }
 
 #[cfg(test)]
