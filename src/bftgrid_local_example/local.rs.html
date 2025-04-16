@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `bftgrid-example/src/local.rs`."><title>local.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-7dda4a46.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="bftgrid_local_example" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (2da29dbe8 2025-04-14)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">bftgrid_local_example/</div>local.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>std::marker::PhantomData;
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `bftgrid-example/src/local.rs`."><title>local.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-7dda4a46.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="bftgrid_local_example" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (38c560ae6 2025-04-15)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">bftgrid_local_example/</div>local.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>std::marker::PhantomData;
 <a href=#2 id=2 data-nosnippet>2</a>
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>bftgrid_core::{
 <a href=#4 id=4 data-nosnippet>4</a>    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
@@ -206,44 +206,45 @@
 <a href=#206 id=206 data-nosnippet>206</a>
 <a href=#207 id=207 data-nosnippet>207</a><span class="attr">#[tokio::main]
 <a href=#208 id=208 data-nosnippet>208</a></span><span class="kw">async fn </span>main() {
-<a href=#209 id=209 data-nosnippet>209</a>    <span class="kw">let </span>thread_actor_system = ThreadActorSystem::new();
-<a href=#210 id=210 data-nosnippet>210</a>    <span class="kw">let </span>tokio_actor_system = TokioActorSystem::new();
-<a href=#211 id=211 data-nosnippet>211</a>    <span class="kw">let </span>System {
-<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw-2">mut </span>actor1_ref,
-<a href=#213 id=213 data-nosnippet>213</a>        actor2_ref,
-<a href=#214 id=214 data-nosnippet>214</a>        ..
-<a href=#215 id=215 data-nosnippet>215</a>    } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
-<a href=#216 id=216 data-nosnippet>216</a>    actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
-<a href=#217 id=217 data-nosnippet>217</a>    actor2_ref.join();
-<a href=#218 id=218 data-nosnippet>218</a>    <span class="macro">println!</span>(<span class="string">"Joined Actor2"</span>);
-<a href=#219 id=219 data-nosnippet>219</a>    actor1_ref.join();
-<a href=#220 id=220 data-nosnippet>220</a>    <span class="macro">println!</span>(<span class="string">"Joined Actor1"</span>);
-<a href=#221 id=221 data-nosnippet>221</a>    tokio_actor_system.join().<span class="kw">await</span>;
-<a href=#222 id=222 data-nosnippet>222</a>    thread_actor_system.join();
-<a href=#223 id=223 data-nosnippet>223</a>}
-<a href=#224 id=224 data-nosnippet>224</a>
-<a href=#225 id=225 data-nosnippet>225</a><span class="attr">#[cfg(test)]
-<a href=#226 id=226 data-nosnippet>226</a></span><span class="kw">mod </span>tests {
-<a href=#227 id=227 data-nosnippet>227</a>    <span class="kw">use </span>std::{
-<a href=#228 id=228 data-nosnippet>228</a>        collections::HashMap,
-<a href=#229 id=229 data-nosnippet>229</a>        ops::Add,
-<a href=#230 id=230 data-nosnippet>230</a>        time::{Duration, Instant},
-<a href=#231 id=231 data-nosnippet>231</a>    };
-<a href=#232 id=232 data-nosnippet>232</a>
-<a href=#233 id=233 data-nosnippet>233</a>    <span class="kw">use </span>bftgrid_core::ActorRef;
-<a href=#234 id=234 data-nosnippet>234</a>    <span class="kw">use </span>bftgrid_sim::{NodeDescriptor, Simulation};
-<a href=#235 id=235 data-nosnippet>235</a>
-<a href=#236 id=236 data-nosnippet>236</a>    <span class="kw">use crate</span>::{build_system, Ping, System};
-<a href=#237 id=237 data-nosnippet>237</a>
-<a href=#238 id=238 data-nosnippet>238</a>    <span class="attr">#[test]
-<a href=#239 id=239 data-nosnippet>239</a>    </span><span class="kw">fn </span>simulation() {
-<a href=#240 id=240 data-nosnippet>240</a>        <span class="kw">let </span><span class="kw-2">mut </span>topology = HashMap::new();
-<a href=#241 id=241 data-nosnippet>241</a>        topology.insert(<span class="string">"node"</span>.into(), NodeDescriptor::default());
-<a href=#242 id=242 data-nosnippet>242</a>        <span class="kw">let </span>start = Instant::now();
-<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span>simulation = Simulation::new(topology, start, start.add(Duration::from_secs(<span class="number">100</span>)));
-<a href=#244 id=244 data-nosnippet>244</a>        <span class="kw">let </span>System { <span class="kw-2">mut </span>actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
-<a href=#245 id=245 data-nosnippet>245</a>        actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
-<a href=#246 id=246 data-nosnippet>246</a>        <span class="kw">let </span>history = simulation.run();
-<a href=#247 id=247 data-nosnippet>247</a>        <span class="macro">println!</span>(<span class="string">"{:?}"</span>, history);
-<a href=#248 id=248 data-nosnippet>248</a>    }
-<a href=#249 id=249 data-nosnippet>249</a>}</code></pre></div></section></main></body></html>
+<a href=#209 id=209 data-nosnippet>209</a>    env_logger::init();
+<a href=#210 id=210 data-nosnippet>210</a>    <span class="kw">let </span>thread_actor_system = ThreadActorSystem::new();
+<a href=#211 id=211 data-nosnippet>211</a>    <span class="kw">let </span>tokio_actor_system = TokioActorSystem::new();
+<a href=#212 id=212 data-nosnippet>212</a>    <span class="kw">let </span>System {
+<a href=#213 id=213 data-nosnippet>213</a>        <span class="kw-2">mut </span>actor1_ref,
+<a href=#214 id=214 data-nosnippet>214</a>        actor2_ref,
+<a href=#215 id=215 data-nosnippet>215</a>        ..
+<a href=#216 id=216 data-nosnippet>216</a>    } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
+<a href=#217 id=217 data-nosnippet>217</a>    actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
+<a href=#218 id=218 data-nosnippet>218</a>    actor2_ref.join();
+<a href=#219 id=219 data-nosnippet>219</a>    <span class="macro">println!</span>(<span class="string">"Joined Actor2"</span>);
+<a href=#220 id=220 data-nosnippet>220</a>    actor1_ref.join();
+<a href=#221 id=221 data-nosnippet>221</a>    <span class="macro">println!</span>(<span class="string">"Joined Actor1"</span>);
+<a href=#222 id=222 data-nosnippet>222</a>    tokio_actor_system.join_async().<span class="kw">await</span>;
+<a href=#223 id=223 data-nosnippet>223</a>    thread_actor_system.join();
+<a href=#224 id=224 data-nosnippet>224</a>}
+<a href=#225 id=225 data-nosnippet>225</a>
+<a href=#226 id=226 data-nosnippet>226</a><span class="attr">#[cfg(test)]
+<a href=#227 id=227 data-nosnippet>227</a></span><span class="kw">mod </span>tests {
+<a href=#228 id=228 data-nosnippet>228</a>    <span class="kw">use </span>std::{
+<a href=#229 id=229 data-nosnippet>229</a>        collections::HashMap,
+<a href=#230 id=230 data-nosnippet>230</a>        ops::Add,
+<a href=#231 id=231 data-nosnippet>231</a>        time::{Duration, Instant},
+<a href=#232 id=232 data-nosnippet>232</a>    };
+<a href=#233 id=233 data-nosnippet>233</a>
+<a href=#234 id=234 data-nosnippet>234</a>    <span class="kw">use </span>bftgrid_core::ActorRef;
+<a href=#235 id=235 data-nosnippet>235</a>    <span class="kw">use </span>bftgrid_sim::{NodeDescriptor, Simulation};
+<a href=#236 id=236 data-nosnippet>236</a>
+<a href=#237 id=237 data-nosnippet>237</a>    <span class="kw">use crate</span>::{build_system, Ping, System};
+<a href=#238 id=238 data-nosnippet>238</a>
+<a href=#239 id=239 data-nosnippet>239</a>    <span class="attr">#[test]
+<a href=#240 id=240 data-nosnippet>240</a>    </span><span class="kw">fn </span>simulation() {
+<a href=#241 id=241 data-nosnippet>241</a>        <span class="kw">let </span><span class="kw-2">mut </span>topology = HashMap::new();
+<a href=#242 id=242 data-nosnippet>242</a>        topology.insert(<span class="string">"node"</span>.into(), NodeDescriptor::default());
+<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span>start = Instant::now();
+<a href=#244 id=244 data-nosnippet>244</a>        <span class="kw">let </span>simulation = Simulation::new(topology, start, start.add(Duration::from_secs(<span class="number">100</span>)));
+<a href=#245 id=245 data-nosnippet>245</a>        <span class="kw">let </span>System { <span class="kw-2">mut </span>actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
+<a href=#246 id=246 data-nosnippet>246</a>        actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
+<a href=#247 id=247 data-nosnippet>247</a>        <span class="kw">let </span>history = simulation.run();
+<a href=#248 id=248 data-nosnippet>248</a>        <span class="macro">println!</span>(<span class="string">"{:?}"</span>, history);
+<a href=#249 id=249 data-nosnippet>249</a>    }
+<a href=#250 id=250 data-nosnippet>250</a>}</code></pre></div></section></main></body></html>

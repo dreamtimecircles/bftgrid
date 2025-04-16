@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["ActorControl","P2PNetworkError"],"struct":["MessageNotSupported"],"trait":["ActorMsg","ActorRef","ActorSystem","Joinable","P2PNetwork","TypedHandler","UntypedHandler"],"type":["AnActorMsg","AnActorRef","P2PNetworkResult","UntypedHandlerBox"]};
+window.SIDEBAR_ITEMS = {"enum":["ActorControl","P2PNetworkError"],"struct":["MessageNotSupported"],"trait":["ActorMsg","ActorRef","ActorSystem","Joinable","P2PNetwork","Task","TypedHandler","UntypedHandler"],"type":["AnActorMsg","AnActorRef","P2PNetworkResult","UntypedHandlerBox"]};
