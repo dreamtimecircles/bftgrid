@@ -22,7 +22,6 @@ use crate::{cleanup_complete_tasks, notify_close};
 #[derive(Debug)]
 struct TokioTask<T> {
     underlying: TokioJoinHandle<T>,
-    runtime_handle: tokio::runtime::Handle,
 }
 
 impl<T> Task for TokioTask<T>
@@ -34,14 +33,8 @@ where
     }
 }
 
-impl<T> Joinable<T> for TokioTask<T>
-where
-    T: Debug + Send,
-{
-    fn join(self) -> T {
-        self.runtime_handle.block_on(self.underlying).unwrap()
-    }
-}
+// `Joinable` is never implemented for async/Tokyo structures in order to avoid having to use `block_on`,
+//  which is not allowed in an async context.
 
 #[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
@@ -139,7 +132,6 @@ where
         Ok(handle) => {
             log::debug!("Current thread's Tokio runtime found");
             TokioTask {
-                runtime_handle: handle.clone(),
                 underlying: handle.spawn(future),
             }
         }
@@ -147,20 +139,15 @@ where
             Some(r) => {
                 log::debug!("No current Tokio runtime available but one dedicated to the actor system was already created");
                 TokioTask {
-                    runtime_handle: r.handle().clone(),
                     underlying: r.spawn(future),
                 }
             }
             None => {
                 log::debug!("No current Tokio runtime and not created a dedicated one for the actor system yet, creating it");
                 let r = tokio::runtime::Runtime::new().unwrap();
-                let handle = r.handle().clone();
                 let res = r.spawn(future);
                 *runtime = Some(r.into());
-                TokioTask {
-                    runtime_handle: handle,
-                    underlying: res,
-                }
+                TokioTask { underlying: res }
             }
         },
     }
@@ -175,10 +162,6 @@ impl Default for TokioActorSystem {
 impl TokioActorSystem {
     pub async fn join_async(self) {
         join_tasks(self.tasks).await;
-    }
-
-    pub fn is_finished(&mut self) -> bool {
-        self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
     }
 }
 
@@ -198,15 +181,6 @@ async fn join_tasks(tasks_to_join: Arc<Mutex<Vec<TokioTask<()>>>>) {
 impl Task for TokioActorSystem {
     fn is_finished(&self) -> bool {
         self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
-    }
-}
-
-impl Joinable<()> for TokioActorSystem {
-    fn join(self) {
-        let TokioActorSystem { runtime, tasks } = self;
-        if let Some(r) = runtime {
-            r.block_on(join_tasks(tasks));
-        }
     }
 }
 
@@ -371,14 +345,23 @@ where
     MsgT: ActorMsg,
     SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
 {
-    println!("Sending to {}", node.as_ref());
+    log::debug!("Sending to {}", node.as_ref());
     let socket_handle = match sockets.get(node.as_ref()) {
         Some(s) => (*s).clone(),
         None => P2PNetworkResult::Err(P2PNetworkError::ActorNotFound(node.as_ref().to_owned())),
     }?;
     let serialized_message = serializer(message)?;
     spawn(runtime, async move {
-        socket_handle.send(&serialized_message[..]).await
+        match socket_handle.send(&serialized_message[..]).await {
+            Ok(_) => {
+                log::debug!("Message sent");
+                Ok(())
+            }
+            Err(e) => {
+                log::warn!("Failed to send message: {:?}", e);
+                Err(P2PNetworkError::Io(Arc::new(e)))
+            }
+        }
     });
     Ok(())
 }
