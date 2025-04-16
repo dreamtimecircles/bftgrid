@@ -67,7 +67,9 @@ where
                 None
             }
             1 => {
-                println!("Actor1 received second ping, self-pinging");
+                println!("Actor1 received second ping, sending second ping to Actor2 over the network and self-pinging");
+                let mut out = self.network_out.clone();
+                let _ = out.attempt_send(Ping {}, &|_msg| Ok(Vec::new()), "localhost:5002");
                 self.self_ref.send(Ping(), None);
                 None
             }
@@ -112,6 +114,7 @@ where
     P2PNetworkT: P2PNetwork,
 {
     network_out: P2PNetworkT,
+    ping_count: u8,
 }
 
 impl<P2PNetworkT> Actor2<P2PNetworkT>
@@ -119,7 +122,10 @@ where
     P2PNetworkT: P2PNetwork,
 {
     fn new(network_out: P2PNetworkT) -> Self {
-        Actor2 { network_out }
+        Actor2 {
+            network_out,
+            ping_count: 0,
+        }
     }
 }
 
@@ -130,11 +136,24 @@ where
     type MsgT = Ping;
 
     fn receive(&mut self, msg: Self::MsgT) -> Option<ActorControl> {
-        println!("Actor2 received ping over the network, replying with a ping over the network");
-        let mut out = self.network_out.clone();
-        let _ = out.attempt_send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");
-        println!("Actor2 sent ping, exiting");
-        Some(ActorControl::Exit())
+        let ret = match self.ping_count {
+            0 => {
+                println!(
+                    "Actor2 received ping over the network, replying with a ping over the network"
+                );
+                let mut out = self.network_out.clone();
+                let _ = out.attempt_send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");
+                // We expect in this example that sends are successful (although that's not generally the case);
+                //  for this reason we don't exit just after a network send, else it may not complete.
+                None
+            }
+            _ => {
+                println!("Actor2 received second ping, exiting");
+                Some(ActorControl::Exit())
+            }
+        };
+        self.ping_count += 1;
+        ret
     }
 }
 
@@ -208,11 +227,11 @@ async fn main() {
             actor1_ref_copy,
             "node1",
             tokio_actor_system.clone(),
-            network1,
+            network1.clone(),
         ),
     );
     let mut actor2_ref = thread_actor_system.create("node2", "actor2");
-    thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2));
+    thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2.clone()));
     let node1 = TokioNetworkNode::new(
         Node1P2pNetworkInputHandler {
             actor1_ref: actor1_ref.new_ref(),
