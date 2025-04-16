@@ -10,7 +10,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use async_trait::async_trait;
 use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, P2PNetworkResult, TypedHandler,
     UntypedHandlerBox,
@@ -137,7 +136,6 @@ impl<MsgT, HandlerT> std::fmt::Debug for SimulatedActor<MsgT, HandlerT> {
     }
 }
 
-#[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for SimulatedActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
@@ -539,7 +537,6 @@ impl ActorSystem for Simulation {
     }
 }
 
-#[async_trait]
 impl P2PNetwork for Simulation {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,

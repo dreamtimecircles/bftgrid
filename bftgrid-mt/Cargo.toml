@@ -7,7 +7,6 @@ authors = ["Fabio Tudone <fabtud@gmail.com>"]
 [dependencies]
 bftgrid-core = { path = "../bftgrid-core" }
 tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
-async-trait = "0.1.88"
 futures = "0.3.31"
 dyn-clone = "1.0.19"
 thiserror = "2.0.12"

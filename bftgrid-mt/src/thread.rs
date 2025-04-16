@@ -9,7 +9,6 @@ use std::{
     time::Duration,
 };
 
-use async_trait::async_trait;
 use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, Task, TypedHandler};
 
 use crate::{cleanup_complete_tasks, notify_close};
@@ -80,7 +79,6 @@ where
     }
 }
 
-#[async_trait]
 impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for ThreadActor<MsgT, HandlerT>
 where
     MsgT: ActorMsg,
