@@ -100,9 +100,29 @@ where
     }
 }
 
+
+#[derive(Clone, Debug)]
+enum TokioRuntime {
+    Current(tokio::runtime::Handle),
+    Dedicated(Arc<tokio::runtime::Runtime>),
+}
+
+impl TokioRuntime {
+    fn spawn<F>(&self, future: F) -> TokioJoinHandle<F::Output>
+    where
+        F: core::future::Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match self {
+            TokioRuntime::Current(handle) => handle.spawn(future),
+            TokioRuntime::Dedicated(runtime) => runtime.spawn(future),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TokioActorSystem {
-    runtime: Option<Arc<tokio::runtime::Runtime>>,
+    runtime: TokioRuntime,
     tasks: Arc<Mutex<Vec<TokioTask<()>>>>,
 }
 
@@ -110,7 +130,7 @@ impl TokioActorSystem {
     pub fn new() -> Self {
         TokioActorSystem {
             tasks: Default::default(),
-            runtime: None,
+            runtime: get_runtime(),
         }
     }
 
@@ -119,37 +139,20 @@ impl TokioActorSystem {
         F: core::future::Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        spawn(&mut self.runtime, future)
+        TokioTask { underlying: self.runtime.spawn(future) }
     }
 }
 
-fn spawn<F>(runtime: &mut Option<Arc<tokio::runtime::Runtime>>, future: F) -> TokioTask<F::Output>
-where
-    F: core::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
+fn get_runtime() -> TokioRuntime {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
-            log::debug!("Current thread's Tokio runtime found");
-            TokioTask {
-                underlying: handle.spawn(future),
-            }
+            log::debug!("Reusing current Tokio runtime");
+            TokioRuntime::Current(handle)
         }
-        Err(_) => match runtime {
-            Some(r) => {
-                log::debug!("No current Tokio runtime available but one dedicated to the actor system was already created");
-                TokioTask {
-                    underlying: r.spawn(future),
-                }
-            }
-            None => {
-                log::debug!("No current Tokio runtime and not created a dedicated one for the actor system yet, creating it");
-                let r = tokio::runtime::Runtime::new().unwrap();
-                let res = r.spawn(future);
-                *runtime = Some(r.into());
-                TokioTask { underlying: res }
-            }
-        },
+        Err(_) => {
+            log::debug!("No current Tokio runtime available, creating a dedicated one");
+            TokioRuntime::Dedicated(Arc::new(tokio::runtime::Runtime::new().unwrap()))
+        }
     }
 }
 
@@ -330,12 +333,12 @@ impl<UntypedHandlerT: UntypedHandler + 'static> TokioNetworkNode<UntypedHandlerT
 
 #[derive(Debug, Clone)]
 pub struct TokioP2PNetwork {
-    runtime: Option<Arc<tokio::runtime::Runtime>>,
+    runtime: TokioRuntime,
     sockets: HashMap<String, P2PNetworkResult<Arc<UdpSocket>>>,
 }
 
 fn attempt_send_internal<MsgT, SerializerT>(
-    runtime: &mut Option<Arc<tokio::runtime::Runtime>>,
+    runtime: &TokioRuntime,
     sockets: &HashMap<String, P2PNetworkResult<Arc<tokio::net::UdpSocket>>>,
     message: MsgT,
     serializer: &SerializerT,
@@ -351,7 +354,8 @@ where
         None => P2PNetworkResult::Err(P2PNetworkError::ActorNotFound(node.as_ref().to_owned())),
     }?;
     let serialized_message = serializer(message)?;
-    spawn(runtime, async move {
+    runtime.spawn(async move {
+        log::debug!("Starting network send");
         match socket_handle.send(&serialized_message[..]).await {
             Ok(_) => {
                 log::debug!("Message sent");
@@ -396,7 +400,7 @@ impl TokioP2PNetwork {
             .collect();
 
         TokioP2PNetwork {
-            runtime: None,
+            runtime: get_runtime(),
             sockets,
         }
     }
