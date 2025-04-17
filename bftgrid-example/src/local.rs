@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
 };
+use bftgrid_example::setup_logging;
 use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
 #[derive(Clone, Debug)]
@@ -205,7 +206,7 @@ where
 }
 
 fn main() {
-    env_logger::init();
+    setup_logging();
     let thread_actor_system = ThreadActorSystem::new("thread-as");
     let tokio_actor_system = TokioActorSystem::new("tokio-as");
     let System {
@@ -231,13 +232,14 @@ mod tests {
     };
 
     use bftgrid_core::ActorRef;
+    use bftgrid_example::setup_logging;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
     use crate::{build_system, Ping, System};
 
     #[test]
     fn simulation() {
-        env_logger::init();
+        setup_logging();
         let mut topology = HashMap::new();
         topology.insert("node".into(), NodeDescriptor::default());
         let start = Instant::now();

@@ -5,6 +5,7 @@ use bftgrid_core::{
     MessageNotSupported, P2PNetwork, TypedHandler, UntypedHandler,
 };
 
+use bftgrid_example::setup_logging;
 use bftgrid_mt::{
     new_tokio_runtime,
     thread::ThreadActorSystem,
@@ -217,7 +218,7 @@ where
 }
 
 fn main() {
-    env_logger::init();
+    setup_logging();
     let runtime = new_tokio_runtime("main");
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"]);
     let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"]);
@@ -298,13 +299,14 @@ mod tests {
     };
 
     use bftgrid_core::ActorSystem;
+    use bftgrid_example::setup_logging;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
     use crate::{Actor1, Actor2, ActorRef, Ping};
 
     #[test]
     fn simulation() {
-        env_logger::init();
+        setup_logging();
         let mut topology = HashMap::new();
         topology.insert(
             "localhost:5001".into(),
