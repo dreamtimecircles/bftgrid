@@ -1,6 +1,10 @@
 //! An actor framework geared towards BFT ordering libraries with support for deterministic simulation testing.
 //! It also allows writing a generic overall system construction logic independent from the specific actor system used.
 //! Every actor is managed by a single actor system but can interact with actors managed by other actor systems.
+//! 
+//! No async signatures are used in the public API in order to support single-threaded simulation testing without relying on async runtimes.
+//! Actors should not assume anything about the thread they are running on, nor use any async runtime. They must rely on actor system facilities
+//! to execute thread-blocking and async tasks.
 
 use std::{
     any::Any,
@@ -141,7 +145,7 @@ pub enum P2PNetworkError {
     #[error("Join error")]
     Join(#[from] Arc<JoinError>),
     #[error("Actor not found")]
-    ActorNotFound(String),
+    ActorNotFound(Arc<String>),
 }
 
 pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
@@ -152,7 +156,7 @@ pub trait P2PNetwork: Clone {
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: impl AsRef<str>,
+        node: impl Into<String>,
     ) -> P2PNetworkResult<()>
     where
         MsgT: ActorMsg,

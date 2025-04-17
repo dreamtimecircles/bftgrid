@@ -542,7 +542,7 @@ impl P2PNetwork for Simulation {
         &mut self,
         message: MsgT,
         _serializer: &SerializerT,
-        to_node: impl AsRef<str>,
+        to_node: impl Into<String>,
     ) -> P2PNetworkResult<()>
     where
         MsgT: ActorMsg,
@@ -555,7 +555,7 @@ impl P2PNetwork for Simulation {
             .push(SimulationEventAtInstant {
                 instant,
                 event: SimulationEvent::P2PSend {
-                    to_node: Arc::new(to_node.as_ref().to_owned()),
+                    to_node: Arc::new(to_node.into()),
                     event: Box::new(message),
                 },
             });

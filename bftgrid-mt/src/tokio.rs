@@ -17,7 +17,7 @@ use tokio::{
     task::JoinHandle as TokioJoinHandle,
 };
 
-use crate::{cleanup_complete_tasks, notify_close};
+use crate::{cleanup_complete_tasks, new_tokio_runtime, notify_close, TokioRuntime};
 
 #[derive(Debug)]
 struct TokioTask<T> {
@@ -32,9 +32,6 @@ where
         self.underlying.is_finished()
     }
 }
-
-// `Joinable` is never implemented for async/Tokyo structures in order to avoid having to use `block_on`,
-//  which is not allowed in an async context.
 
 #[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
@@ -80,14 +77,13 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        let t = self.actor_system.spawn(async move {
+        self.actor_system.spawn_task(async move {
             if let Some(delay_duration) = delay {
                 log::debug!("Delaying send by {:?}", delay_duration);
                 tokio::time::sleep(delay_duration).await;
             }
             sender.send(message).ok().unwrap()
         });
-        cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap().as_mut()).push(t);
     }
 
     fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
@@ -101,84 +97,44 @@ where
 }
 
 #[derive(Clone, Debug)]
-enum TokioRuntime {
-    Current(tokio::runtime::Handle),
-    Dedicated(Arc<tokio::runtime::Runtime>),
-}
-
-impl TokioRuntime {
-    fn spawn<F>(&self, future: F) -> TokioJoinHandle<F::Output>
-    where
-        F: core::future::Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        match self {
-            TokioRuntime::Current(handle) => handle.spawn(future),
-            TokioRuntime::Dedicated(runtime) => runtime.spawn(future),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct TokioActorSystem {
-    runtime: TokioRuntime,
+    runtime: Arc<TokioRuntime>,
     tasks: Arc<Mutex<Vec<TokioTask<()>>>>,
 }
 
 impl TokioActorSystem {
-    pub fn new() -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         TokioActorSystem {
             tasks: Default::default(),
-            runtime: get_runtime(),
+            runtime: Arc::new(new_tokio_runtime(name)),
         }
     }
 
-    fn spawn<F>(&mut self, future: F) -> TokioTask<F::Output>
-    where
-        F: core::future::Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        TokioTask {
-            underlying: self.runtime.spawn(future),
-        }
+    fn spawn_task(&mut self, future: impl std::future::Future<Output = ()> + Send + 'static) {
+        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(TokioTask {
+            underlying: self.runtime.underlying.spawn(future),
+        });
     }
 }
 
-fn get_runtime() -> TokioRuntime {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => {
-            log::debug!("Reusing current Tokio runtime");
-            TokioRuntime::Current(handle)
-        }
-        Err(_) => {
-            log::debug!("No current Tokio runtime available, creating a dedicated one");
-            TokioRuntime::Dedicated(Arc::new(tokio::runtime::Runtime::new().unwrap()))
-        }
-    }
-}
-
-impl Default for TokioActorSystem {
-    fn default() -> Self {
-        TokioActorSystem::new()
-    }
-}
-
-impl TokioActorSystem {
-    pub async fn join_async(self) {
-        join_tasks(self.tasks).await;
-    }
-}
-
-async fn join_tasks(tasks_to_join: Arc<Mutex<Vec<TokioTask<()>>>>) {
-    let mut tasks = vec![];
-    {
-        let mut locked_tasks = tasks_to_join.lock().unwrap();
-        mem::swap(&mut *locked_tasks, &mut tasks);
-        // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
-    }
-    log::info!("Tokio actor system joining {} tasks", tasks.len());
-    for t in tasks {
-        t.underlying.await.unwrap();
+impl Joinable<()> for TokioActorSystem {
+    fn join(self) {
+        self.runtime.underlying.block_on(async {
+            let mut tasks = vec![];
+            {
+                let mut locked_tasks = self.tasks.lock().unwrap();
+                mem::swap(&mut *locked_tasks, &mut tasks);
+                // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+            }
+            log::info!(
+                "Tokio actor system '{}' joining {} tasks",
+                self.runtime.name,
+                tasks.len()
+            );
+            for t in tasks {
+                t.underlying.await.unwrap();
+            }
+        });
     }
 }
 
@@ -210,17 +166,18 @@ impl ActorSystem for TokioActorSystem {
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
-        let t = self.spawn(async move {
+        let actor_system_name = self.runtime.name.clone();
+        self.spawn_task(async move {
             let mut current_handler = handler_rx.recv().await.unwrap();
-            log::debug!("Async actor {} on node {} started", actor_name, actor_node_id);
+            log::debug!("Async actor '{}' on node '{}' started in tokio actor system '{}'", actor_name, actor_node_id, actor_system_name);
             loop {
                 if let Ok(new_handler) = handler_rx.try_recv() {
-                    log::debug!("Async actor {} on node {}: new handler received", actor_name, actor_node_id);
+                    log::debug!("Async actor '{}' on node '{}' in tokio actor system '{}': new handler received", actor_name, actor_node_id, actor_system_name);
                     current_handler = new_handler;
                 }
                 match rx.recv().await {
                     None => {
-                        log::info!("Async actor {} on node {}: shutting down due to message receive channel having being closed", actor_name, actor_node_id);
+                        log::info!("Async actor '{}' on node '{}' in tokio actor system '{}': shutting down due to message receive channel having being closed", actor_name, actor_node_id, actor_system_name);
                         rx.close();
                         handler_rx.close();
                         notify_close(close_cond2);
@@ -230,7 +187,7 @@ impl ActorSystem for TokioActorSystem {
                         if let Some(control) = current_handler.lock().unwrap().receive(m) {
                             match control {
                                 ActorControl::Exit() => {
-                                    log::info!("Async actor {} on node {}: closing requested by handler, shutting it down", actor_name, actor_node_id);
+                                    log::info!("Async actor '{}' on node '{}' in tokio actor system '{}': closing requested by handler, shutting it down", actor_name, actor_node_id, actor_system_name);
                                     rx.close();
                                     handler_rx.close();
                                     notify_close(close_cond2);
@@ -242,7 +199,6 @@ impl ActorSystem for TokioActorSystem {
                 }
             }
         });
-        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(t);
         TokioActor {
             actor_system: self.clone(),
             tx,
@@ -266,18 +222,22 @@ impl ActorSystem for TokioActorSystem {
     }
 }
 
-pub struct TokioNetworkNode<UntypedHandlerT: UntypedHandler> {
-    handler: UntypedHandlerT,
-    socket: UdpSocket,
+pub struct TokioP2PNetworkServer {
+    socket: Arc<UdpSocket>,
+    runtime: TokioRuntime,
 }
 
-impl<UntypedHandlerT: UntypedHandler + 'static> TokioNetworkNode<UntypedHandlerT> {
-    pub fn new(handler: UntypedHandlerT, socket: UdpSocket) -> P2PNetworkResult<Self> {
-        Ok(TokioNetworkNode { handler, socket })
+impl TokioP2PNetworkServer {
+    pub fn new(name: impl Into<String>, socket: UdpSocket) -> Self {
+        TokioP2PNetworkServer {
+            socket: Arc::new(socket),
+            runtime: new_tokio_runtime(name),
+        }
     }
 
-    pub fn start<MsgT, DeT>(
-        mut self,
+    pub fn start<UntypedHandlerT: UntypedHandler + 'static, MsgT, DeT>(
+        &self,
+        mut handler: UntypedHandlerT,
         deserializer: DeT,
         buffer_size: usize,
     ) -> io::Result<TokioJoinHandle<()>>
@@ -286,106 +246,142 @@ impl<UntypedHandlerT: UntypedHandler + 'static> TokioNetworkNode<UntypedHandlerT
         DeT: Fn(&mut [u8]) -> P2PNetworkResult<MsgT> + Send + 'static,
     {
         let addr = self.socket.local_addr()?;
-        log::info!("Async actor netork server {} starting", addr);
-        Ok(tokio::spawn(async move {
+        log::info!("Async actor network server '{}' starting", addr);
+        let socket = self.socket.clone();
+        Ok(self.runtime.underlying.spawn(async move {
+            log::info!("Async actor network server '{}' started", addr);
             let mut buf = vec![0; buffer_size];
             loop {
-                let valid_bytes = match self.socket.recv(&mut buf[..]).await {
+                log::debug!("Async actor network server '{}' receiving", addr);
+                let (valid_bytes, _) = match socket.recv_from(&mut buf[..]).await {
                     Ok(bs) => bs,
                     Err(e) => {
                         log::warn!(
-                            "Async actor netork server {}: datagram receive failed: {}",
+                            "Async actor network server '{}': datagram receive failed: {}",
                             addr,
                             e
                         );
                         continue;
                     }
                 };
+                log::debug!(
+                    "Async actor network server '{}' received datagram, deserializing",
+                    addr
+                );
                 let message = match deserializer(&mut buf[..valid_bytes]) {
                     Ok(m) => m,
                     Err(e) => {
                         log::warn!(
-                            "Async actor netork server {}: deserialization failed: {:?}",
+                            "Async actor network server '{}': deserialization failed: {:?}",
                             addr,
                             e
                         );
                         continue;
                     }
                 };
-                if let Some(ActorControl::Exit()) =
-                    match self.handler.receive_untyped(Box::new(message)) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            log::warn!(
-                                "Async actor netork server {}: handler receive failed: {:?}",
-                                addr,
-                                e
-                            );
-                            continue;
-                        }
-                    }
+                log::debug!(
+                    "Async actor network server '{}' deserialized datagra, sending to input actor",
+                    addr
+                );
+                if let Some(ActorControl::Exit()) = match handler.receive_untyped(Box::new(message))
                 {
+                    Ok(m) => m,
+                    Err(e) => {
+                        log::warn!(
+                            "Async actor network server '{}': handler receive failed: {:?}",
+                            addr,
+                            e
+                        );
+                        continue;
+                    }
+                } {
+                    log::debug!(
+                        "Async actor network server '{}': input actor exited, stopping",
+                        addr
+                    );
                     break;
                 }
             }
         }))
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct TokioP2PNetwork {
-    runtime: TokioRuntime,
-    sockets: HashMap<String, P2PNetworkResult<Arc<UdpSocket>>>,
-}
-
-impl TokioP2PNetwork {
-    pub async fn new(initial_peers: Vec<impl Into<String>>) -> Self {
-        let initial_peer_addrs: Vec<String> = initial_peers.into_iter().map(|p| p.into()).collect(); // Consumed to produce result
-        let initial_peer_addrs_clone = initial_peer_addrs.clone(); // Consumed by `connect`
-        let sockets = initial_peer_addrs
-            .into_iter()
-            .zip(
-                future::join_all(initial_peer_addrs_clone.into_iter().map(|p| {
-                    tokio::runtime::Handle::current().spawn(async move {
-                        let socket = UdpSocket::bind("localhost:0").await?;
-                        socket.connect(p).await.map(|_| socket)
-                    })
-                }))
-                .await
-                .into_iter()
-                .map(|rr| match rr {
-                    Ok(r) => match r {
-                        Ok(socket) => P2PNetworkResult::<Arc<UdpSocket>>::Ok(Arc::new(socket)),
-                        Err(e) => P2PNetworkResult::<Arc<UdpSocket>>::Err(P2PNetworkError::Io(
-                            Arc::new(e),
-                        )),
-                    },
-                    Err(e) => {
-                        P2PNetworkResult::<Arc<UdpSocket>>::Err(P2PNetworkError::Join(Arc::new(e)))
-                    }
-                }),
-            )
-            .collect();
-
-        TokioP2PNetwork {
-            runtime: get_runtime(),
-            sockets,
-        }
+    pub fn stop(self) {
+        log::info!(
+            "Async actor netork server '{}' stopping",
+            self.socket.local_addr().unwrap()
+        );
     }
 }
 
-impl P2PNetwork for TokioP2PNetwork {
+#[derive(Debug, Clone)]
+pub struct TokioP2PNetworkClient {
+    runtime: Arc<TokioRuntime>,
+    sockets: HashMap<String, P2PNetworkResult<Arc<UdpSocket>>>,
+}
+
+impl TokioP2PNetworkClient {
+    pub fn new(name: impl Into<String>, initial_peers: Vec<impl Into<String>>) -> Self {
+        let runtime = Arc::new(new_tokio_runtime(name));
+        let runtime_clone = runtime.clone();
+        let network_name = runtime.name.clone();
+        let sockets: HashMap<String, Result<Arc<UdpSocket>, P2PNetworkError>> =
+            runtime.underlying.block_on(async move {
+                let initial_peer_addrs: Vec<String> =
+                    initial_peers.into_iter().map(|p| p.into()).collect(); // Consumed to produce result
+                let initial_peer_addrs_clone = initial_peer_addrs.clone(); // Consumed by `connect`
+                initial_peer_addrs
+                    .into_iter()
+                    .zip(
+                        future::join_all(initial_peer_addrs_clone.into_iter().map(|peer_addr| {
+                            let network_name = network_name.clone();
+                            runtime_clone.underlying.spawn(async move {
+                                log::debug!("Async actor network client '{}' started connecting to peer {}", network_name, peer_addr);
+                                let socket = UdpSocket::bind("localhost:0").await?;
+                                log::debug!(
+                                    "Async actor network client '{}' bound UDP socket to local address for connecting to peer {}",
+                                    network_name, peer_addr
+                                );
+                                let p_addr_clone = peer_addr.clone();
+                                socket.connect(peer_addr).await.map(|_| {
+                                    log::debug!("Async actor network client '{}' connected UDP socket to peer {}", network_name, p_addr_clone);
+                                    socket
+                                })
+                            })
+                        }))
+                        .await
+                        .into_iter()
+                        .map(|rr| match rr {
+                            Ok(r) => match r {
+                                Ok(socket) => {
+                                    P2PNetworkResult::<Arc<UdpSocket>>::Ok(Arc::new(socket))
+                                }
+                                Err(e) => P2PNetworkResult::<Arc<UdpSocket>>::Err(
+                                    P2PNetworkError::Io(Arc::new(e)),
+                                ),
+                            },
+                            Err(e) => P2PNetworkResult::<Arc<UdpSocket>>::Err(
+                                P2PNetworkError::Join(Arc::new(e)),
+                            ),
+                        }),
+                    )
+                    .collect()
+            });
+        TokioP2PNetworkClient { runtime, sockets }
+    }
+}
+
+impl P2PNetwork for TokioP2PNetworkClient {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
         serializer: &SerializerT,
-        node: impl AsRef<str>,
+        node_addr: impl Into<String>,
     ) -> P2PNetworkResult<()>
     where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
     {
-        attempt_send_internal(&self.runtime, &self.sockets, message, serializer, node)
+        attempt_send_internal(&self.runtime, &self.sockets, message, serializer, node_addr)
     }
 }
 
@@ -394,30 +390,56 @@ fn attempt_send_internal<MsgT, SerializerT>(
     sockets: &HashMap<String, P2PNetworkResult<Arc<tokio::net::UdpSocket>>>,
     message: MsgT,
     serializer: &SerializerT,
-    node: impl AsRef<str>,
+    node_addr: impl Into<String>,
 ) -> P2PNetworkResult<()>
 where
     MsgT: ActorMsg,
     SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync,
 {
-    log::debug!("Sending to {}", node.as_ref());
-    let socket_handle = match sockets.get(node.as_ref()) {
+    let node_addr: Arc<String> = node_addr.into().into();
+    let node_addr2 = node_addr.clone();
+    log::debug!(
+        "Async actor network client '{}' sending to {}",
+        runtime.name,
+        node_addr
+    );
+    let socket_handle = match sockets.get(node_addr.as_ref()) {
         Some(s) => (*s).clone(),
-        None => P2PNetworkResult::Err(P2PNetworkError::ActorNotFound(node.as_ref().to_owned())),
+        None => P2PNetworkResult::Err(P2PNetworkError::ActorNotFound(node_addr.clone())),
     }?;
     let serialized_message = serializer(message)?;
-    runtime.spawn(async move {
-        log::debug!("Starting network send");
+    let runtime_name = runtime.name.clone();
+    let runtime_name2 = runtime_name.clone();
+    runtime.underlying.spawn(async move {
+        log::debug!(
+            "Async actor network client '{}' starting network send to {}",
+            runtime_name,
+            node_addr
+        );
         match socket_handle.send(&serialized_message[..]).await {
             Ok(_) => {
-                log::debug!("Message sent");
+                log::debug!(
+                    "Async actor network client '{}' sent a message to {}",
+                    runtime_name,
+                    node_addr
+                );
                 Ok(())
             }
             Err(e) => {
-                log::warn!("Failed to send message: {:?}", e);
+                log::warn!(
+                    "Async actor network client '{}' failed to send message to {}: {:?}",
+                    runtime_name,
+                    node_addr,
+                    e
+                );
                 Err(P2PNetworkError::Io(Arc::new(e)))
             }
         }
     });
+    log::debug!(
+        "Async actor network client '{}' started sending to {}",
+        runtime_name2,
+        node_addr2
+    );
     Ok(())
 }
