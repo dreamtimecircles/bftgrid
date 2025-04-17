@@ -1,21 +1,37 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `bftgrid-mt/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-7dda4a46.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="bftgrid_mt" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (38c560ae6 2025-04-15)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">bftgrid_mt/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-2"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>std::sync::{Arc, Condvar, Mutex};
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `bftgrid-mt/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-7dda4a46.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="bftgrid_mt" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (78f2104e3 2025-04-16)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">bftgrid_mt/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-2"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>std::sync::{Arc, Condvar, Mutex};
 <a href=#2 id=2 data-nosnippet>2</a>
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>bftgrid_core::Task;
 <a href=#4 id=4 data-nosnippet>4</a>
 <a href=#5 id=5 data-nosnippet>5</a><span class="kw">pub mod </span>thread;
 <a href=#6 id=6 data-nosnippet>6</a><span class="kw">pub mod </span>tokio;
 <a href=#7 id=7 data-nosnippet>7</a>
-<a href=#8 id=8 data-nosnippet>8</a><span class="kw">fn </span>notify_close(close_cond: Arc&lt;(Mutex&lt;bool&gt;, Condvar)&gt;) {
-<a href=#9 id=9 data-nosnippet>9</a>    <span class="kw">let </span>(closed_mutex, cvar) = <span class="kw-2">&amp;*</span>close_cond;
-<a href=#10 id=10 data-nosnippet>10</a>    <span class="kw">let </span><span class="kw-2">mut </span>closed = closed_mutex.lock().unwrap();
-<a href=#11 id=11 data-nosnippet>11</a>    <span class="kw-2">*</span>closed = <span class="bool-val">true</span>;
-<a href=#12 id=12 data-nosnippet>12</a>    cvar.notify_all();
-<a href=#13 id=13 data-nosnippet>13</a>}
-<a href=#14 id=14 data-nosnippet>14</a>
-<a href=#15 id=15 data-nosnippet>15</a><span class="kw">fn </span>cleanup_complete_tasks&lt;TaskT&gt;(tasks: <span class="kw-2">&amp;mut </span>Vec&lt;TaskT&gt;) -&gt; <span class="kw-2">&amp;mut </span>Vec&lt;TaskT&gt;
-<a href=#16 id=16 data-nosnippet>16</a><span class="kw">where
-<a href=#17 id=17 data-nosnippet>17</a>    </span>TaskT: Task,
-<a href=#18 id=18 data-nosnippet>18</a>{
-<a href=#19 id=19 data-nosnippet>19</a>    tasks.retain(|t| !t.is_finished());
-<a href=#20 id=20 data-nosnippet>20</a>    tasks
-<a href=#21 id=21 data-nosnippet>21</a>}</code></pre></div></section></main></body></html>
+<a href=#8 id=8 data-nosnippet>8</a><span class="attr">#[derive(Debug)]
+<a href=#9 id=9 data-nosnippet>9</a></span><span class="kw">pub struct </span>TokioRuntime {
+<a href=#10 id=10 data-nosnippet>10</a>    <span class="kw">pub </span>name: Arc&lt;String&gt;,
+<a href=#11 id=11 data-nosnippet>11</a>    <span class="kw">pub </span>underlying: ::tokio::runtime::Runtime,
+<a href=#12 id=12 data-nosnippet>12</a>}
+<a href=#13 id=13 data-nosnippet>13</a>
+<a href=#14 id=14 data-nosnippet>14</a><span class="kw">pub fn </span>new_tokio_runtime(name: <span class="kw">impl </span>Into&lt;String&gt;) -&gt; TokioRuntime {
+<a href=#15 id=15 data-nosnippet>15</a>    TokioRuntime {
+<a href=#16 id=16 data-nosnippet>16</a>        name: name.into().into(),
+<a href=#17 id=17 data-nosnippet>17</a>        underlying: ::tokio::runtime::Builder::new_multi_thread()
+<a href=#18 id=18 data-nosnippet>18</a>            .enable_all()
+<a href=#19 id=19 data-nosnippet>19</a>            .build()
+<a href=#20 id=20 data-nosnippet>20</a>            .unwrap(),
+<a href=#21 id=21 data-nosnippet>21</a>    }
+<a href=#22 id=22 data-nosnippet>22</a>}
+<a href=#23 id=23 data-nosnippet>23</a>
+<a href=#24 id=24 data-nosnippet>24</a><span class="kw">fn </span>notify_close(close_cond: Arc&lt;(Mutex&lt;bool&gt;, Condvar)&gt;) {
+<a href=#25 id=25 data-nosnippet>25</a>    <span class="kw">let </span>(closed_mutex, cvar) = <span class="kw-2">&amp;*</span>close_cond;
+<a href=#26 id=26 data-nosnippet>26</a>    <span class="kw">let </span><span class="kw-2">mut </span>closed = closed_mutex.lock().unwrap();
+<a href=#27 id=27 data-nosnippet>27</a>    <span class="kw-2">*</span>closed = <span class="bool-val">true</span>;
+<a href=#28 id=28 data-nosnippet>28</a>    cvar.notify_all();
+<a href=#29 id=29 data-nosnippet>29</a>}
+<a href=#30 id=30 data-nosnippet>30</a>
+<a href=#31 id=31 data-nosnippet>31</a><span class="kw">fn </span>cleanup_complete_tasks&lt;TaskT&gt;(tasks: <span class="kw-2">&amp;mut </span>Vec&lt;TaskT&gt;) -&gt; <span class="kw-2">&amp;mut </span>Vec&lt;TaskT&gt;
+<a href=#32 id=32 data-nosnippet>32</a><span class="kw">where
+<a href=#33 id=33 data-nosnippet>33</a>    </span>TaskT: Task,
+<a href=#34 id=34 data-nosnippet>34</a>{
+<a href=#35 id=35 data-nosnippet>35</a>    tasks.retain(|t| !t.is_finished());
+<a href=#36 id=36 data-nosnippet>36</a>    tasks
+<a href=#37 id=37 data-nosnippet>37</a>}</code></pre></div></section></main></body></html>
