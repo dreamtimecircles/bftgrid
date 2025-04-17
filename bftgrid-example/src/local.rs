@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use bftgrid_core::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
 };
+use bftgrid_example::setup_logging;
 use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
 #[derive(Clone, Debug)]
@@ -82,9 +83,9 @@ where
     type MsgT = Actor1ToActor2<Actor1ActorSystemT>;
 
     fn receive(&mut self, mut msg: Self::MsgT) -> Option<ActorControl> {
-        println!("Actor2 received ref, sending ping to it");
+        log::info!("Actor2 received ref, sending ping to it");
         msg.actor1_ref.send(Ping(), None);
-        println!("Actor2 sent ping, exiting");
+        log::info!("Actor2 sent ping, exiting");
         Some(ActorControl::Exit())
     }
 }
@@ -98,7 +99,7 @@ where
     fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
             0 => {
-                println!("Actor1 received first ping, sending ref to Actor2");
+                log::info!("Actor1 received first ping, sending ref to Actor2");
                 let self_ref = self.self_ref.new_ref();
                 self.actor2_ref.send(
                     Actor1ToActor2 {
@@ -109,19 +110,19 @@ where
                 None
             }
             1 => {
-                println!("Actor1 received second ping, self-pinging");
+                log::info!("Actor1 received second ping, self-pinging");
                 self.self_ref.send(Ping(), None);
                 None
             }
             _ => {
-                println!("Actor1 received third ping");
+                log::info!("Actor1 received third ping");
                 if self.spawn_count < 1 {
-                    println!("Actor1 spawning");
+                    log::info!("Actor1 spawning");
                     let mut new_ref = self.actor_system.create::<Ping, Actor1<ActorSystemT>>(
                         self.node_id.clone(),
                         self.spawn_count.to_string(),
                     );
-                    println!("Actor1 setting handler");
+                    log::info!("Actor1 setting handler");
                     self.actor_system.set_handler(
                         &mut new_ref,
                         Actor1 {
@@ -133,11 +134,11 @@ where
                             spawn_count: self.spawn_count + 1,
                         },
                     );
-                    println!("Actor1 sending");
+                    log::info!("Actor1 sending");
                     new_ref.send(Ping(), None);
-                    println!("Actor1 done");
+                    log::info!("Actor1 done");
                 }
-                println!("Actor1 exiting");
+                log::info!("Actor1 exiting");
                 Some(ActorControl::Exit())
             }
         };
@@ -204,11 +205,10 @@ where
     System::new(actor1_ref, actor2_ref)
 }
 
-#[tokio::main]
-async fn main() {
-    env_logger::init();
-    let thread_actor_system = ThreadActorSystem::new();
-    let tokio_actor_system = TokioActorSystem::new();
+fn main() {
+    setup_logging();
+    let thread_actor_system = ThreadActorSystem::new("thread-as");
+    let tokio_actor_system = TokioActorSystem::new("tokio-as");
     let System {
         mut actor1_ref,
         actor2_ref,
@@ -216,10 +216,10 @@ async fn main() {
     } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
     actor1_ref.send(Ping(), None);
     actor2_ref.join();
-    println!("Joined Actor2");
+    log::info!("Joined Actor2");
     actor1_ref.join();
-    println!("Joined Actor1");
-    tokio_actor_system.join_async().await;
+    log::info!("Joined Actor1");
+    tokio_actor_system.join();
     thread_actor_system.join();
 }
 
@@ -232,12 +232,14 @@ mod tests {
     };
 
     use bftgrid_core::ActorRef;
+    use bftgrid_example::setup_logging;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
     use crate::{build_system, Ping, System};
 
     #[test]
     fn simulation() {
+        setup_logging();
         let mut topology = HashMap::new();
         topology.insert("node".into(), NodeDescriptor::default());
         let start = Instant::now();
@@ -245,6 +247,6 @@ mod tests {
         let System { mut actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
         actor1_ref.send(Ping(), None);
         let history = simulation.run();
-        println!("{:?}", history);
+        log::info!("{:?}", history);
     }
 }

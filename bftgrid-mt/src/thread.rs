@@ -112,20 +112,16 @@ where
 
 #[derive(Clone, Debug)]
 pub struct ThreadActorSystem {
+    name: Arc<String>,
     tasks: Arc<Mutex<Vec<ThreadJoinable<()>>>>,
 }
 
 impl ThreadActorSystem {
-    pub fn new() -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         ThreadActorSystem {
+            name: name.into().into(),
             tasks: Default::default(),
         }
-    }
-}
-
-impl Default for ThreadActorSystem {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -142,7 +138,11 @@ impl Joinable<()> for ThreadActorSystem {
         mem::swap(&mut *locked_tasks, &mut tasks);
         // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
         drop(locked_tasks);
-        log::info!("Thread actor system joining {} tasks", tasks.len());
+        log::info!(
+            "Thread actor system '{}' joining {} tasks",
+            self.name,
+            tasks.len()
+        );
         for t in tasks {
             t.join();
         }
@@ -171,17 +171,18 @@ impl ActorSystem for ThreadActorSystem {
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
+        let actor_system_name = self.name.clone();
         cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(ThreadJoinable::new(thread::spawn(move || {
                 let mut current_handler = handler_rx.recv().unwrap();
-                log::debug!("Actor {} on node {} started", actor_name, actor_node_id);
+                log::debug!("Started actor '{}' on node '{}' in thread actor system '{}'", actor_name, actor_node_id, actor_system_name);
                 loop {
                     if let Ok(new_handler) = handler_rx.try_recv() {
-                        log::debug!("Actor {} on node {}: new handler received", actor_name, actor_node_id);
+                        log::debug!("Thread actor '{}' on node '{}' in thread actor system '{}': new handler received", actor_name, actor_node_id, actor_system_name);
                         current_handler = new_handler;
                     }
                     match rx.recv() {
                         Err(_) => {
-                            log::info!("Actor {} on node {}: shutting down due to message receive channel having being closed", actor_name, actor_node_id);
+                            log::info!("Thread actor '{}' on node '{}' in thread actor system '{}': shutting down due to message receive channel having being closed", actor_name, actor_node_id, actor_system_name);
                             notify_close(close_cond2);
                             return;
                         }
@@ -189,7 +190,7 @@ impl ActorSystem for ThreadActorSystem {
                             if let Some(control) = current_handler.lock().unwrap().receive(m) {
                                 match control {
                                     ActorControl::Exit() => {
-                                        log::info!("Actor {} on node {}: closing requested by handler, shutting it down", actor_name, actor_node_id);
+                                        log::info!("Thread actor '{}' on node '{}' in thread actor system '{}': closing requested by handler, shutting it down", actor_name, actor_node_id, actor_system_name);
                                         notify_close(close_cond2);
                                         return;
                                     }
