@@ -136,6 +136,27 @@ pub trait ActorSystem: Clone {
     ) where
         MsgT: ActorMsg,
         HandlerT: TypedHandler<MsgT = MsgT>;
+
+    fn spawn_async_send<MsgT, HandlerT, O>(
+        &self,
+        f: impl Future<Output = O> + Send + 'static,
+        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
+
+    fn spawn_blocking_send<MsgT, HandlerT, R>(
+        &self,
+        f: impl FnOnce() -> R + Send + 'static,
+        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        R: Send + 'static;
 }
 
 #[derive(Error, Debug, Clone)]
@@ -151,7 +172,7 @@ pub enum P2PNetworkError {
 pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
 
 /// A [`P2PNetwork`] allows sending messages to other nodes in a P2P network.
-pub trait P2PNetwork: Clone {
+pub trait P2PNetworkClient: Clone {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,

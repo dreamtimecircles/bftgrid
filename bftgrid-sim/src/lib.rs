@@ -11,8 +11,8 @@ use std::{
 };
 
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, P2PNetworkResult, TypedHandler,
-    UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetworkClient, P2PNetworkResult,
+    TypedHandler, UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -171,6 +171,7 @@ pub struct Simulation {
     clock: Arc<Mutex<SimulatedClock>>,
     random: ChaCha8Rng,
     end_instant: Instant,
+    tokio_runtime: Arc<tokio::runtime::Runtime>,
 }
 
 impl Simulation {
@@ -185,6 +186,12 @@ impl Simulation {
             })),
             random: ChaCha8Rng::seed_from_u64(SEED),
             end_instant,
+            tokio_runtime: Arc::new(
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap(),
+            ),
         }
     }
 
@@ -465,6 +472,7 @@ impl Clone for Simulation {
             clock: self.clock.clone(),
             random: self.random.clone(),
             end_instant: self.end_instant,
+            tokio_runtime: self.tokio_runtime.clone(),
         }
     }
 }
@@ -535,9 +543,37 @@ impl ActorSystem for Simulation {
             Arc::new(Mutex::new(Some(Box::new(handler)))),
         );
     }
+
+    fn spawn_async_send<MsgT, HandlerT, O>(
+        &self,
+        f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
+        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        mut actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    {
+        let res = self.tokio_runtime.block_on(f);
+        actor_ref.send(to_msg(res), delay);
+    }
+
+    fn spawn_blocking_send<MsgT, HandlerT, R>(
+        &self,
+        f: impl FnOnce() -> R + Send + 'static,
+        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        mut actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        R: Send + 'static,
+    {
+        actor_ref.send(to_msg(f()), delay);
+    }
 }
 
-impl P2PNetwork for Simulation {
+impl P2PNetworkClient for Simulation {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
