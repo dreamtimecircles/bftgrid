@@ -205,7 +205,10 @@ where
     System::new(actor1_ref, actor2_ref)
 }
 
-fn main() {
+// Components that need a Tokio runtime will reuse the one from the async context, if any,
+//  otherwise they will create a new one.
+#[tokio::main]
+async fn main() {
     setup_logging();
     let thread_actor_system = ThreadActorSystem::new("thread-as");
     let tokio_actor_system = TokioActorSystem::new("tokio-as");

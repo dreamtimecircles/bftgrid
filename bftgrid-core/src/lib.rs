@@ -151,7 +151,7 @@ pub enum P2PNetworkError {
 pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
 
 /// A [`P2PNetwork`] allows sending messages to other nodes in a P2P network.
-pub trait P2PNetwork: Clone {
+pub trait P2PNetworkClient: Clone {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,

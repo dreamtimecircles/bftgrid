@@ -11,8 +11,8 @@ use std::{
 };
 
 use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetwork, P2PNetworkResult, TypedHandler,
-    UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetworkClient, P2PNetworkResult,
+    TypedHandler, UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -537,7 +537,7 @@ impl ActorSystem for Simulation {
     }
 }
 
-impl P2PNetwork for Simulation {
+impl P2PNetworkClient for Simulation {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,

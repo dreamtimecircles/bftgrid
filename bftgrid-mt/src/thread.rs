@@ -15,13 +15,7 @@ use crate::{cleanup_complete_tasks, notify_close};
 
 #[derive(Debug)]
 struct ThreadJoinable<T> {
-    underlying: ThreadJoinHandle<T>,
-}
-
-impl<T> ThreadJoinable<T> {
-    fn new(underlying: ThreadJoinHandle<T>) -> ThreadJoinable<T> {
-        ThreadJoinable { underlying }
-    }
+    value: ThreadJoinHandle<T>,
 }
 
 impl<T> Task for ThreadJoinable<T>
@@ -29,7 +23,7 @@ where
     T: Debug + Send,
 {
     fn is_finished(&self) -> bool {
-        self.underlying.is_finished()
+        self.value.is_finished()
     }
 }
 
@@ -38,7 +32,7 @@ where
     T: Debug + Send,
 {
     fn join(self) -> T {
-        self.underlying.join().unwrap()
+        self.value.join().unwrap()
     }
 }
 
@@ -87,16 +81,14 @@ where
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
         if let Some(delay_duration) = delay {
-            cleanup_complete_tasks(self.actor_system.tasks.lock().unwrap().as_mut()).push(
-                ThreadJoinable::new(thread::spawn(move || {
-                    log::debug!("Delaying send by {:?}", delay_duration);
-                    thread::sleep(delay_duration);
-                    sender.send(message).ok().unwrap()
-                })),
-            );
+            self.actor_system.spawn_task(move || {
+                log::debug!("Delaying send by {:?}", delay_duration);
+                thread::sleep(delay_duration);
+                checked_send(sender, message);
+            });
         } else {
             // No need to spawn a thread if no delay is needed, as the sender is non-blocking
-            sender.send(message).ok().unwrap()
+            checked_send(sender, message);
         }
     }
 
@@ -107,6 +99,18 @@ where
             handler_tx: self.handler_tx.clone(),
             close_cond: self.close_cond.clone(),
         })
+    }
+}
+
+fn checked_send<MsgT>(sender: Sender<MsgT>, message: MsgT)
+where
+    MsgT: ActorMsg,
+{
+    match sender.send(message) {
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!("Send from thread actor failed: {:?}", e);
+        }
     }
 }
 
@@ -122,6 +126,12 @@ impl ThreadActorSystem {
             name: name.into().into(),
             tasks: Default::default(),
         }
+    }
+
+    fn spawn_task(&mut self, f: impl FnOnce() + Send + 'static) {
+        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(ThreadJoinable {
+            value: thread::spawn(f),
+        });
     }
 }
 
@@ -172,35 +182,34 @@ impl ActorSystem for ThreadActorSystem {
         let actor_name = name.into();
         let actor_node_id = node_id.into();
         let actor_system_name = self.name.clone();
-        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(ThreadJoinable::new(thread::spawn(move || {
-                let mut current_handler = handler_rx.recv().unwrap();
-                log::debug!("Started actor '{}' on node '{}' in thread actor system '{}'", actor_name, actor_node_id, actor_system_name);
-                loop {
-                    if let Ok(new_handler) = handler_rx.try_recv() {
-                        log::debug!("Thread actor '{}' on node '{}' in thread actor system '{}': new handler received", actor_name, actor_node_id, actor_system_name);
-                        current_handler = new_handler;
+        self.spawn_task(move || {
+            let mut current_handler = handler_rx.recv().unwrap();
+            log::debug!("Started actor '{}' on node '{}' in thread actor system '{}'", actor_name, actor_node_id, actor_system_name);
+            loop {
+                if let Ok(new_handler) = handler_rx.try_recv() {
+                    log::debug!("Thread actor '{}' on node '{}' in thread actor system '{}': new handler received", actor_name, actor_node_id, actor_system_name);
+                    current_handler = new_handler;
+                }
+                match rx.recv() {
+                    Err(_) => {
+                        log::info!("Thread actor '{}' on node '{}' in thread actor system '{}': shutting down due to message receive channel having being closed", actor_name, actor_node_id, actor_system_name);
+                        notify_close(close_cond2);
+                        return;
                     }
-                    match rx.recv() {
-                        Err(_) => {
-                            log::info!("Thread actor '{}' on node '{}' in thread actor system '{}': shutting down due to message receive channel having being closed", actor_name, actor_node_id, actor_system_name);
-                            notify_close(close_cond2);
-                            return;
-                        }
-                        Ok(m) => {
-                            if let Some(control) = current_handler.lock().unwrap().receive(m) {
-                                match control {
-                                    ActorControl::Exit() => {
-                                        log::info!("Thread actor '{}' on node '{}' in thread actor system '{}': closing requested by handler, shutting it down", actor_name, actor_node_id, actor_system_name);
-                                        notify_close(close_cond2);
-                                        return;
-                                    }
+                    Ok(m) => {
+                        if let Some(control) = current_handler.lock().unwrap().receive(m) {
+                            match control {
+                                ActorControl::Exit() => {
+                                    log::info!("Thread actor '{}' on node '{}' in thread actor system '{}': closing requested by handler, shutting it down", actor_name, actor_node_id, actor_system_name);
+                                    notify_close(close_cond2);
+                                    return;
                                 }
                             }
                         }
                     }
                 }
-            }),
-        ));
+            }
+        });
         ThreadActor {
             actor_system: self.clone(),
             tx,
