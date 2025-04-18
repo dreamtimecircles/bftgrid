@@ -7,7 +7,7 @@ use bftgrid_core::{
 
 use bftgrid_example::setup_logging;
 use bftgrid_mt::{
-    get_tokio_runtime,
+    get_async_runtime,
     thread::ThreadActorSystem,
     tokio::{TokioActorSystem, TokioP2PNetworkClient, TokioP2PNetworkServer},
 };
@@ -70,9 +70,15 @@ where
                 None
             }
             1 => {
-                log::info!("Actor1 received second ping, self-pinging");
-                self.self_ref.send(Ping(), None);
-                log::info!("Actor1 self-pinged");
+                log::info!("Actor1 received second ping, self-pinging after async work");
+                self.actor_system.spawn_async_send(
+                    async {
+                        log::info!("Actor1 doing async work");
+                    },
+                    |_| Ping {},
+                    self.self_ref.new_ref(),
+                    None,
+                );
                 None
             }
             _ => {
@@ -202,7 +208,7 @@ where
 #[tokio::main]
 async fn main() {
     setup_logging();
-    let runtime = get_tokio_runtime("main");
+    let async_runtime = get_async_runtime("main");
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"]);
     let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"]);
     let mut tokio_actor_system = TokioActorSystem::new("tokio-as");
@@ -222,7 +228,7 @@ async fn main() {
     thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2.clone()));
     let node1 = TokioP2PNetworkServer::new(
         "node1",
-        runtime.await_async(async {
+        async_runtime.await_async(async {
             UdpSocket::bind("localhost:5001")
                 .await
                 .expect("Cannot bind")
@@ -240,7 +246,7 @@ async fn main() {
     log::info!("Started node1");
     let node2 = TokioP2PNetworkServer::new(
         "node2",
-        runtime.await_async(async {
+        async_runtime.await_async(async {
             UdpSocket::bind("localhost:5002")
                 .await
                 .expect("Cannot bind")

@@ -11,7 +11,7 @@ use std::{
 
 use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, Task, TypedHandler};
 
-use crate::{cleanup_complete_tasks, notify_close};
+use crate::{cleanup_complete_tasks, get_async_runtime, notify_close, AsyncRuntime};
 
 #[derive(Debug)]
 struct ThreadJoinable<T> {
@@ -116,14 +116,14 @@ where
 
 #[derive(Clone, Debug)]
 pub struct ThreadActorSystem {
-    name: Arc<String>,
+    runtime: Arc<AsyncRuntime>,
     tasks: Arc<Mutex<Vec<ThreadJoinable<()>>>>,
 }
 
 impl ThreadActorSystem {
     pub fn new(name: impl Into<String>) -> Self {
         ThreadActorSystem {
-            name: name.into().into(),
+            runtime: Arc::new(get_async_runtime(name)),
             tasks: Default::default(),
         }
     }
@@ -150,7 +150,7 @@ impl Joinable<()> for ThreadActorSystem {
         drop(locked_tasks);
         log::info!(
             "Thread actor system '{}' joining {} tasks",
-            self.name,
+            self.runtime.name,
             tasks.len()
         );
         for t in tasks {
@@ -181,7 +181,7 @@ impl ActorSystem for ThreadActorSystem {
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
-        let actor_system_name = self.name.clone();
+        let actor_system_name = self.runtime.name.clone();
         self.spawn_task(move || {
             let mut current_handler = handler_rx.recv().unwrap();
             log::debug!("Started actor '{}' on node '{}' in thread actor system '{}'", actor_name, actor_node_id, actor_system_name);
@@ -230,5 +230,33 @@ impl ActorSystem for ThreadActorSystem {
             .handler_tx
             .send(Arc::new(Mutex::new(handler)))
             .unwrap();
+    }
+
+    fn spawn_async_send<MsgT, HandlerT, O>(
+        &self,
+        f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
+        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    {
+        self.runtime.spawn_async_send(f, to_msg, actor_ref, delay);
+    }
+
+    fn spawn_blocking_send<MsgT, HandlerT, R>(
+        &self,
+        f: impl FnOnce() -> R + Send + 'static,
+        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        R: Send + 'static,
+    {
+        self.runtime
+            .spawn_blocking_send(f, to_msg, actor_ref, delay);
     }
 }

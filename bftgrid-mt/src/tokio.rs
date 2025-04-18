@@ -17,7 +17,7 @@ use tokio::{
     task::JoinHandle as TokioJoinHandle,
 };
 
-use crate::{cleanup_complete_tasks, get_tokio_runtime, notify_close, TokioRuntime};
+use crate::{cleanup_complete_tasks, get_async_runtime, notify_close, AsyncRuntime};
 
 #[derive(Debug)]
 struct TokioTask<T> {
@@ -116,21 +116,21 @@ where
 
 #[derive(Clone, Debug)]
 pub struct TokioActorSystem {
-    runtime: Arc<TokioRuntime>,
+    runtime: Arc<AsyncRuntime>,
     tasks: Arc<Mutex<Vec<TokioTask<()>>>>,
 }
 
 impl TokioActorSystem {
     pub fn new(name: impl Into<String>) -> Self {
         TokioActorSystem {
+            runtime: Arc::new(get_async_runtime(name)),
             tasks: Default::default(),
-            runtime: Arc::new(get_tokio_runtime(name)),
         }
     }
 
     fn spawn_task(&mut self, future: impl std::future::Future<Output = ()> + Send + 'static) {
         cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(TokioTask {
-            value: self.runtime.spawn(future),
+            value: self.runtime.spawn_async(future),
         });
     }
 }
@@ -239,18 +239,46 @@ impl ActorSystem for TokioActorSystem {
             .send(Arc::new(Mutex::new(handler)))
             .unwrap();
     }
+
+    fn spawn_async_send<MsgT, HandlerT, O>(
+        &self,
+        f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
+        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    {
+        self.runtime.spawn_async_send(f, to_msg, actor_ref, delay);
+    }
+
+    fn spawn_blocking_send<MsgT, HandlerT, R>(
+        &self,
+        f: impl FnOnce() -> R + Send + 'static,
+        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        R: Send + 'static,
+    {
+        self.runtime
+            .spawn_blocking_send(f, to_msg, actor_ref, delay);
+    }
 }
 
 pub struct TokioP2PNetworkServer {
     socket: Arc<UdpSocket>,
-    runtime: TokioRuntime,
+    runtime: AsyncRuntime,
 }
 
 impl TokioP2PNetworkServer {
     pub fn new(name: impl Into<String>, socket: UdpSocket) -> Self {
         TokioP2PNetworkServer {
             socket: Arc::new(socket),
-            runtime: get_tokio_runtime(name),
+            runtime: get_async_runtime(name),
         }
     }
 
@@ -267,7 +295,7 @@ impl TokioP2PNetworkServer {
         let addr = self.socket.local_addr()?;
         log::info!("Async actor network server '{}' starting", addr);
         let socket = self.socket.clone();
-        Ok(self.runtime.spawn(async move {
+        Ok(self.runtime.spawn_async(async move {
             log::info!("Async actor network server '{}' started", addr);
             let mut buf = vec![0; buffer_size];
             loop {
@@ -334,13 +362,13 @@ impl TokioP2PNetworkServer {
 
 #[derive(Debug, Clone)]
 pub struct TokioP2PNetworkClient {
-    runtime: Arc<TokioRuntime>,
+    runtime: Arc<AsyncRuntime>,
     sockets: HashMap<String, P2PNetworkResult<Arc<UdpSocket>>>,
 }
 
 impl TokioP2PNetworkClient {
     pub fn new(name: impl Into<String>, initial_peers: Vec<impl Into<String>>) -> Self {
-        let runtime = Arc::new(get_tokio_runtime(name));
+        let runtime = Arc::new(get_async_runtime(name));
         let runtime_clone = runtime.clone();
         let network_name = runtime.name.clone();
         let sockets: HashMap<String, Result<Arc<UdpSocket>, P2PNetworkError>> =
@@ -353,7 +381,7 @@ impl TokioP2PNetworkClient {
                     .zip(
                         future::join_all(initial_peer_addrs_clone.into_iter().map(|peer_addr| {
                             let network_name = network_name.clone();
-                            runtime_clone.spawn(async move {
+                            runtime_clone.spawn_async(async move {
                                 log::debug!("Async actor network client '{}' started connecting to peer {}", network_name, peer_addr);
                                 let socket = UdpSocket::bind("localhost:0").await?;
                                 log::debug!(
@@ -405,7 +433,7 @@ impl P2PNetworkClient for TokioP2PNetworkClient {
 }
 
 fn attempt_send_internal<MsgT, SerializerT>(
-    runtime: &TokioRuntime,
+    runtime: &AsyncRuntime,
     sockets: &HashMap<String, P2PNetworkResult<Arc<tokio::net::UdpSocket>>>,
     message: MsgT,
     serializer: &SerializerT,

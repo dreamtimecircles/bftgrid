@@ -110,12 +110,20 @@ where
                 None
             }
             1 => {
-                log::info!("Actor1 received second ping, self-pinging");
-                self.self_ref.send(Ping(), None);
+                log::info!("Actor1 received second ping, self-pinging after async work");
+                self.actor_system.spawn_async_send(
+                    async move {
+                        log::info!("Actor1 simulating async work");
+                    },
+                    |_| Ping(),
+                    self.self_ref.new_ref(),
+                    None,
+                );
                 None
             }
             _ => {
                 log::info!("Actor1 received third ping");
+                log::info!("Actor1 simulating async work");
                 if self.spawn_count < 1 {
                     log::info!("Actor1 spawning");
                     let mut new_ref = self.actor_system.create::<Ping, Actor1<ActorSystemT>>(

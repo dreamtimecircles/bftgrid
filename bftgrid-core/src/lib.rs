@@ -136,6 +136,27 @@ pub trait ActorSystem: Clone {
     ) where
         MsgT: ActorMsg,
         HandlerT: TypedHandler<MsgT = MsgT>;
+
+    fn spawn_async_send<MsgT, HandlerT, O>(
+        &self,
+        f: impl Future<Output = O> + Send + 'static,
+        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
+
+    fn spawn_blocking_send<MsgT, HandlerT, R>(
+        &self,
+        f: impl FnOnce() -> R + Send + 'static,
+        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        R: Send + 'static;
 }
 
 #[derive(Error, Debug, Clone)]
