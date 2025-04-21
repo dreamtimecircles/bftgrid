@@ -217,7 +217,7 @@ where
 //  otherwise they will create a new one.
 #[tokio::main]
 async fn main() {
-    setup_logging();
+    setup_logging(false);
     let thread_actor_system = ThreadActorSystem::new("thread-as");
     let tokio_actor_system = TokioActorSystem::new("tokio-as");
     let System {
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn simulation() {
-        setup_logging();
+        setup_logging(true);
         let mut topology = HashMap::new();
         topology.insert("node".into(), NodeDescriptor::default());
         let start = Instant::now();
