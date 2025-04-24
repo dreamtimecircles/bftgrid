@@ -9,7 +9,9 @@ use std::{
     time::Duration,
 };
 
-use bftgrid_core::{ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, Task, TypedHandler};
+use bftgrid_core::actor::{
+    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, Task, TypedHandler,
+};
 
 use crate::{cleanup_complete_tasks, get_async_runtime, notify_close, AsyncRuntime};
 
@@ -236,7 +238,7 @@ impl ActorSystem for ThreadActorSystem {
         &self,
         f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
         to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
-        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
@@ -249,7 +251,7 @@ impl ActorSystem for ThreadActorSystem {
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
-        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,

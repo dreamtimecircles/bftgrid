@@ -1,11 +1,12 @@
+mod utils;
+
 use std::any::Any;
 
-use bftgrid_core::{
+use bftgrid_core::actor::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorMsg, AnActorRef, Joinable,
     MessageNotSupported, P2PNetworkClient, TypedHandler, UntypedHandler,
 };
 
-use bftgrid_example::setup_logging;
 use bftgrid_mt::{
     get_async_runtime,
     thread::ThreadActorSystem,
@@ -166,7 +167,7 @@ where
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
-    ) -> Result<Option<ActorControl>, bftgrid_core::MessageNotSupported> {
+    ) -> Result<Option<ActorControl>, MessageNotSupported> {
         match (message as Box<dyn Any>).downcast::<Ping>() {
             Ok(typed_message) => {
                 self.actor1_ref.send(*typed_message, None);
@@ -192,7 +193,7 @@ where
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
-    ) -> Result<Option<ActorControl>, bftgrid_core::MessageNotSupported> {
+    ) -> Result<Option<ActorControl>, MessageNotSupported> {
         match (message as Box<dyn Any>).downcast::<Ping>() {
             Ok(typed_message) => {
                 self.actor2_ref.send(*typed_message, None);
@@ -207,7 +208,7 @@ where
 //  otherwise they will create a new one.
 #[tokio::main]
 async fn main() {
-    setup_logging(false);
+    utils::setup_logging(false);
     let async_runtime = get_async_runtime("main");
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"]);
     let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"]);
@@ -288,15 +289,15 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use bftgrid_core::ActorSystem;
-    use bftgrid_example::setup_logging;
+    use crate::utils;
+    use bftgrid_core::actor::ActorSystem;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
     use crate::{Actor1, Actor2, ActorRef, Ping};
 
     #[test]
     fn simulation() {
-        setup_logging(true);
+        utils::setup_logging(true);
         let mut topology = HashMap::new();
         topology.insert(
             "localhost:5001".into(),

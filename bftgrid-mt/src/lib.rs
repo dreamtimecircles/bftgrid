@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use bftgrid_core::{ActorMsg, AnActorRef, Task, TypedHandler};
+use bftgrid_core::actor::{ActorMsg, AnActorRef, Task, TypedHandler};
 
 pub mod thread;
 pub mod tokio;

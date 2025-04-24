@@ -6,9 +6,9 @@ use std::{
     time::Duration,
 };
 
-use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, Joinable, P2PNetworkClient, P2PNetworkError,
-    P2PNetworkResult, Task, TypedHandler, UntypedHandler,
+use bftgrid_core::actor::{
+    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, P2PNetworkClient,
+    P2PNetworkError, P2PNetworkResult, Task, TypedHandler, UntypedHandler,
 };
 use futures::future;
 use tokio::{
@@ -244,7 +244,7 @@ impl ActorSystem for TokioActorSystem {
         &self,
         f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
         to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
-        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
@@ -257,7 +257,7 @@ impl ActorSystem for TokioActorSystem {
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
-        actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
