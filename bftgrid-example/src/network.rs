@@ -207,7 +207,7 @@ where
 //  otherwise they will create a new one.
 #[tokio::main]
 async fn main() {
-    setup_logging();
+    setup_logging(false);
     let async_runtime = get_async_runtime("main");
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"]);
     let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"]);
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn simulation() {
-        setup_logging();
+        setup_logging(true);
         let mut topology = HashMap::new();
         topology.insert(
             "localhost:5001".into(),
