@@ -1,6 +1,6 @@
 use std::io::Write;
 
-pub fn setup_logging() {
+pub(crate) fn setup_logging() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .target(env_logger::Target::Stdout)
         .format(|buf, record| {

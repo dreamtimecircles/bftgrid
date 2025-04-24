@@ -1,9 +1,10 @@
+mod utils;
+
 use std::marker::PhantomData;
 
-use bftgrid_core::{
+use bftgrid_core::actor::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
 };
-use bftgrid_example::setup_logging;
 use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
 #[derive(Clone, Debug)]
@@ -217,7 +218,7 @@ where
 //  otherwise they will create a new one.
 #[tokio::main]
 async fn main() {
-    setup_logging();
+    utils::setup_logging();
     let thread_actor_system = ThreadActorSystem::new("thread-as");
     let tokio_actor_system = TokioActorSystem::new("tokio-as");
     let System {
@@ -242,15 +243,14 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use bftgrid_core::ActorRef;
-    use bftgrid_example::setup_logging;
+    use bftgrid_core::actor::ActorRef;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
-    use crate::{build_system, Ping, System};
+    use crate::{build_system, utils, Ping, System};
 
     #[test]
     fn simulation() {
-        setup_logging();
+        utils::setup_logging();
         let mut topology = HashMap::new();
         topology.insert("node".into(), NodeDescriptor::default());
         let start = Instant::now();

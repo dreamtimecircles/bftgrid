@@ -10,8 +10,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bftgrid_core::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, P2PNetworkClient, P2PNetworkResult,
+use bftgrid_core::actor::{
+    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, P2PNetworkClient, P2PNetworkResult,
     TypedHandler, UntypedHandlerBox,
 };
 use rand_chacha::{
@@ -548,7 +548,7 @@ impl ActorSystem for Simulation {
         &self,
         f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
         to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
-        mut actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
@@ -562,7 +562,7 @@ impl ActorSystem for Simulation {
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
-        mut actor_ref: bftgrid_core::AnActorRef<MsgT, HandlerT>,
+        mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
