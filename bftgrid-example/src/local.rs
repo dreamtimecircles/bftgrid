@@ -219,8 +219,8 @@ where
 #[tokio::main]
 async fn main() {
     utils::setup_logging(false);
-    let thread_actor_system = ThreadActorSystem::new("thread-as");
-    let tokio_actor_system = TokioActorSystem::new("tokio-as");
+    let thread_actor_system = ThreadActorSystem::new("thread-as", None);
+    let tokio_actor_system = TokioActorSystem::new("tokio-as", None);
     let System {
         mut actor1_ref,
         actor2_ref,

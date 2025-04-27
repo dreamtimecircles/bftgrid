@@ -17,7 +17,7 @@ use tokio::{
     task::JoinHandle as TokioJoinHandle,
 };
 
-use crate::{cleanup_complete_tasks, get_async_runtime, notify_close, AsyncRuntime};
+use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime, TokioRuntimeOrHandle};
 
 #[derive(Debug)]
 struct TokioTask<T> {
@@ -121,9 +121,17 @@ pub struct TokioActorSystem {
 }
 
 impl TokioActorSystem {
-    pub fn new(name: impl Into<String>) -> Self {
+    /// Caches the passed runtime or handle, else the contextual handle,
+    ///  if available, else it creates a runtime with multi-threaded support,
+    ///  CPU-based thread pool size and all features enabled.
+    ///
+    /// The cached runtime or handle are used only if no contextual handle is available.
+    ///
+    /// As generally for Tokio, anything that owns a runtime cannot be dropped
+    ///  from an async context.
+    pub fn new(name: impl Into<String>, tokio: Option<TokioRuntimeOrHandle>) -> Self {
         TokioActorSystem {
-            runtime: Arc::new(get_async_runtime(name)),
+            runtime: Arc::new(AsyncRuntime::new(name, tokio)),
             tasks: Default::default(),
         }
     }
@@ -275,10 +283,22 @@ pub struct TokioP2PNetworkServer {
 }
 
 impl TokioP2PNetworkServer {
-    pub fn new(name: impl Into<String>, socket: UdpSocket) -> Self {
+    /// Caches the passed runtime or handle, else the contextual handle,
+    ///  if available, else it creates a runtime with multi-threaded support,
+    ///  CPU-based thread pool size and all features enabled.
+    ///
+    /// The cached runtime or handle are used only if no contextual handle is available.
+    ///
+    /// As generally for Tokio, anything that owns a runtime cannot be dropped
+    ///  from an async context.
+    pub fn new(
+        name: impl Into<String>,
+        socket: UdpSocket,
+        tokio: Option<TokioRuntimeOrHandle>,
+    ) -> Self {
         TokioP2PNetworkServer {
             socket: Arc::new(socket),
-            runtime: get_async_runtime(name),
+            runtime: AsyncRuntime::new(name, tokio),
         }
     }
 
@@ -367,8 +387,20 @@ pub struct TokioP2PNetworkClient {
 }
 
 impl TokioP2PNetworkClient {
-    pub fn new(name: impl Into<String>, initial_peers: Vec<impl Into<String>>) -> Self {
-        let runtime = Arc::new(get_async_runtime(name));
+    /// Caches the passed runtime or handle, else the contextual handle,
+    ///  if available, else it creates a runtime with multi-threaded support,
+    ///  CPU-based thread pool size and all features enabled.
+    ///
+    /// The cached runtime or handle are used only if no contextual handle is available.
+    ///
+    /// As generally for Tokio, anything that owns a runtime cannot be dropped
+    ///  from an async context.
+    pub fn new(
+        name: impl Into<String>,
+        initial_peers: Vec<impl Into<String>>,
+        tokio: Option<TokioRuntimeOrHandle>,
+    ) -> Self {
+        let runtime = Arc::new(AsyncRuntime::new(name, tokio));
         let runtime_clone = runtime.clone();
         let network_name = runtime.name.clone();
         let sockets: HashMap<String, Result<Arc<UdpSocket>, P2PNetworkError>> =

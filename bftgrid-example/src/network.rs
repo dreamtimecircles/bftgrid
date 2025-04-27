@@ -8,9 +8,9 @@ use bftgrid_core::actor::{
 };
 
 use bftgrid_mt::{
-    get_async_runtime,
     thread::ThreadActorSystem,
     tokio::{TokioActorSystem, TokioP2PNetworkClient, TokioP2PNetworkServer},
+    AsyncRuntime,
 };
 use tokio::net::UdpSocket;
 
@@ -209,11 +209,11 @@ where
 #[tokio::main]
 async fn main() {
     utils::setup_logging(false);
-    let async_runtime = get_async_runtime("main");
-    let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"]);
-    let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"]);
-    let mut tokio_actor_system = TokioActorSystem::new("tokio-as");
-    let mut thread_actor_system = ThreadActorSystem::new("thread-as");
+    let async_runtime = AsyncRuntime::new("main", None);
+    let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"], None);
+    let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"], None);
+    let mut tokio_actor_system = TokioActorSystem::new("tokio-as", None);
+    let mut thread_actor_system = ThreadActorSystem::new("thread-as", None);
     let mut actor1_ref = tokio_actor_system.create("node1", "actor1");
     let actor1_ref_copy = actor1_ref.new_ref();
     tokio_actor_system.set_handler(
@@ -234,6 +234,7 @@ async fn main() {
                 .await
                 .expect("Cannot bind")
         }),
+        None,
     );
     node1
         .start(
@@ -252,6 +253,7 @@ async fn main() {
                 .await
                 .expect("Cannot bind")
         }),
+        None,
     );
     node2
         .start(
