@@ -13,7 +13,7 @@ use bftgrid_core::actor::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, Task, TypedHandler,
 };
 
-use crate::{cleanup_complete_tasks, get_async_runtime, notify_close, AsyncRuntime};
+use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime, TokioRuntimeOrHandle};
 
 #[derive(Debug)]
 struct ThreadJoinable<T> {
@@ -123,9 +123,17 @@ pub struct ThreadActorSystem {
 }
 
 impl ThreadActorSystem {
-    pub fn new(name: impl Into<String>) -> Self {
+    /// Caches the passed runtime or handle, else the contextual handle,
+    ///  if available, else it creates a runtime with multi-threaded support,
+    ///  CPU-based thread pool size and all features enabled.
+    ///
+    /// The cached runtime or handle are used only if no contextual handle is available.
+    ///
+    /// As generally for Tokio, anything that owns a runtime cannot be dropped
+    ///  from an async context.
+    pub fn new(name: impl Into<String>, tokio: Option<TokioRuntimeOrHandle>) -> Self {
         ThreadActorSystem {
-            runtime: Arc::new(get_async_runtime(name)),
+            runtime: Arc::new(AsyncRuntime::new(name, tokio)),
             tasks: Default::default(),
         }
     }
