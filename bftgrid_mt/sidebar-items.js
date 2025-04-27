@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["get_async_runtime"],"mod":["thread","tokio"],"struct":["AsyncRuntime"]};
+window.SIDEBAR_ITEMS = {"enum":["TokioRuntimeOrHandle"],"mod":["thread","tokio"],"struct":["AsyncRuntime"]};
