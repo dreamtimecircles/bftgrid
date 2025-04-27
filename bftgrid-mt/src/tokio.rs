@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     io, mem,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Condvar},
     time::Duration,
 };
 
@@ -41,8 +41,11 @@ where
 {
     actor_system: TokioActorSystem,
     tx: TUnboundedSender<MsgT>,
-    handler_tx: TUnboundedSender<Arc<Mutex<HandlerT>>>,
-    close_cond: Arc<(Mutex<bool>, Condvar)>,
+    // Use a Tokio mutex, as the lock is held for the whole duration of the handler receive,
+    //  which can be long and block the thread, so the async routine that invokes it is
+    //  able to yield to other tasks in the meanwhile.
+    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<HandlerT>>>,
+    close_cond: Arc<(std::sync::Mutex<bool>, Condvar)>,
 }
 
 impl<MsgT, HandlerT> Task for TokioActor<MsgT, HandlerT>
@@ -63,15 +66,12 @@ where
 {
     fn join(self) {
         let (close_mutex, cvar) = &*self.close_cond;
-        let mut closed = self
-            .actor_system
-            .runtime
-            .thread_blocking(|| close_mutex.lock().unwrap());
+        let mut closed = close_mutex.lock().unwrap(); // Shortly held lock, no need to block the thread via the runtime
         while !*closed {
             closed = self
                 .actor_system
                 .runtime
-                .thread_blocking(|| cvar.wait(closed).unwrap());
+                .thread_blocking(|| cvar.wait(closed).unwrap()); // Wait can be long, block the tread via the runtime
         }
     }
 }
@@ -117,7 +117,7 @@ where
 #[derive(Clone, Debug)]
 pub struct TokioActorSystem {
     runtime: Arc<AsyncRuntime>,
-    tasks: Arc<Mutex<Vec<TokioTask<()>>>>,
+    tasks: Arc<std::sync::Mutex<Vec<TokioTask<()>>>>,
 }
 
 impl TokioActorSystem {
@@ -188,8 +188,9 @@ impl ActorSystem for TokioActorSystem {
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
-        let (handler_tx, mut handler_rx) = tmpsc::unbounded_channel::<Arc<Mutex<HandlerT>>>();
-        let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
+        let (handler_tx, mut handler_rx) =
+            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<HandlerT>>>();
+        let close_cond = Arc::new((std::sync::Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
@@ -211,7 +212,7 @@ impl ActorSystem for TokioActorSystem {
                         return;
                     }
                     Some(m) => {
-                        if let Some(control) = current_handler.lock().unwrap().receive(m) {
+                        if let Some(control) = current_handler.lock().await.receive(m) {
                             match control {
                                 ActorControl::Exit() => {
                                     log::info!("Async actor '{}' on node '{}' in tokio actor system '{}': closing requested by handler, shutting it down", actor_name, actor_node_id, actor_system_name);
@@ -244,7 +245,7 @@ impl ActorSystem for TokioActorSystem {
     {
         actor_ref
             .handler_tx
-            .send(Arc::new(Mutex::new(handler)))
+            .send(Arc::new(tokio::sync::Mutex::new(handler)))
             .unwrap();
     }
 
