@@ -69,10 +69,13 @@ where
         let (close_mutex, cvar) = &*self.close_cond;
         let mut closed = close_mutex.lock().unwrap(); // Shortly held lock, no need to block the thread via the runtime
         while !*closed {
+            // The wait can be long, so block the tread safely via the runtime.
+            //  In any case, since the actor system is being dropped and this
+            //  is a one-time operation, it does not constitute a performance issue.
             closed = self
                 .actor_system
                 .runtime
-                .thread_blocking(|| cvar.wait(closed).unwrap()); // Wait can be long, block the tread via the runtime
+                .thread_blocking(|| cvar.wait(closed).unwrap());
         }
     }
 }
@@ -122,14 +125,9 @@ pub struct TokioActorSystem {
 }
 
 impl TokioActorSystem {
-    /// Caches the passed runtime or handle, else the contextual handle,
-    ///  if available, else it creates a runtime with multi-threaded support,
+    /// Owns the passed runtime, using it only if no contextual handle is available;
+    ///  if `None` is passed, it creates a runtime with multi-threaded support,
     ///  CPU-based thread pool size and all features enabled.
-    ///
-    /// The cached runtime or handle are used only if no contextual handle is available.
-    ///
-    /// As generally for Tokio, anything that owns a runtime cannot be dropped
-    ///  from an async context.
     pub fn new(name: impl Into<String>, tokio: Option<Runtime>) -> Self {
         TokioActorSystem {
             runtime: Arc::new(AsyncRuntime::new(name, tokio)),
@@ -162,6 +160,8 @@ impl Joinable<()> for TokioActorSystem {
                 t.value.await.unwrap();
             }
         };
+        // Since we are closing the actor system anyway, it's OK to potentially block
+        //  a Tokio thread.
         self.runtime.await_async(joiner);
     }
 }
@@ -250,32 +250,28 @@ impl ActorSystem for TokioActorSystem {
             .unwrap();
     }
 
-    fn spawn_async_send<MsgT, HandlerT, O>(
+    fn spawn_async_send<MsgT, HandlerT>(
         &self,
-        f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
-        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        f: impl std::prelude::rust_2024::Future<Output = MsgT> + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        self.runtime.spawn_async_send(f, to_msg, actor_ref, delay);
+        self.runtime.spawn_async_send(f, actor_ref, delay);
     }
 
-    fn thread_blocking_send<MsgT, HandlerT, R>(
+    fn spawn_thread_blocking_send<MsgT, HandlerT>(
         &self,
-        f: impl FnOnce() -> R + Send + 'static,
-        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        f: impl FnOnce() -> MsgT + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
-        R: Send + 'static,
     {
-        self.runtime
-            .thread_blocking_send(f, to_msg, actor_ref, delay);
+        self.runtime.spawn_thread_blocking_send(f, actor_ref, delay);
     }
 }
 
@@ -285,14 +281,9 @@ pub struct TokioP2PNetworkServer {
 }
 
 impl TokioP2PNetworkServer {
-    /// Caches the passed runtime or handle, else the contextual handle,
-    ///  if available, else it creates a runtime with multi-threaded support,
+    /// Owns the passed runtime, using it only if no contextual handle is available;
+    ///  if `None` is passed, it creates a runtime with multi-threaded support,
     ///  CPU-based thread pool size and all features enabled.
-    ///
-    /// The cached runtime or handle are used only if no contextual handle is available.
-    ///
-    /// As generally for Tokio, anything that owns a runtime cannot be dropped
-    ///  from an async context.
     pub fn new(name: impl Into<String>, socket: UdpSocket, tokio: Option<Runtime>) -> Self {
         TokioP2PNetworkServer {
             socket: Arc::new(socket),
@@ -378,14 +369,9 @@ pub struct TokioP2PNetworkClient {
 }
 
 impl TokioP2PNetworkClient {
-    /// Caches the passed runtime or handle, else the contextual handle,
-    ///  if available, else it creates a runtime with multi-threaded support,
+    /// Owns the passed runtime, using it only if no contextual handle is available;
+    ///  if `None` is passed, it creates a runtime with multi-threaded support,
     ///  CPU-based thread pool size and all features enabled.
-    ///
-    /// The cached runtime or handle are used only if no contextual handle is available.
-    ///
-    /// As generally for Tokio, anything that owns a runtime cannot be dropped
-    ///  from an async context.
     pub fn new(
         name: impl Into<String>,
         initial_peers: Vec<impl Into<String>>,
@@ -394,6 +380,9 @@ impl TokioP2PNetworkClient {
         let runtime = Arc::new(AsyncRuntime::new(name, tokio));
         let runtime_clone = runtime.clone();
         let network_name = runtime.name.clone();
+        // `await_async` is used bind Tokio UDP sockets to peer addresses from any context;
+        //  this is a one-time operation and is quite fast, so it's not expected to incur
+        //  a significant performance penalty.
         let sockets: HashMap<String, Result<Arc<UdpSocket>, P2PNetworkError>> =
             runtime.await_async(async {
                 let initial_peer_addrs: Vec<String> =
@@ -478,6 +467,7 @@ where
     }?;
     let serialized_message = serializer(message)?;
     let runtime_name = runtime.name.clone();
+    // `await_async` is used send over async UDP sockets from any context and is expected to be fast.
     runtime.await_async(async {
         log::debug!(
             "Async actor network client '{}' starting network send to {}",

@@ -3,6 +3,7 @@
 use std::{
     collections::{BinaryHeap, HashMap},
     fmt::Debug,
+    future::Future,
     marker::PhantomData,
     mem,
     ops::{Add, ControlFlow},
@@ -544,10 +545,9 @@ impl ActorSystem for Simulation {
         );
     }
 
-    fn spawn_async_send<MsgT, HandlerT, O>(
+    fn spawn_async_send<MsgT, HandlerT>(
         &self,
-        f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
-        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        f: impl Future<Output = MsgT> + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
@@ -555,21 +555,19 @@ impl ActorSystem for Simulation {
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         let res = self.tokio_runtime.block_on(f);
-        actor_ref.send(to_msg(res), delay);
+        actor_ref.send(res, delay);
     }
 
-    fn thread_blocking_send<MsgT, HandlerT, R>(
+    fn spawn_thread_blocking_send<MsgT, HandlerT>(
         &self,
-        f: impl FnOnce() -> R + Send + 'static,
-        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        f: impl FnOnce() -> MsgT + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
-        R: Send + 'static,
     {
-        actor_ref.send(to_msg(f()), delay);
+        actor_ref.send(f(), delay);
     }
 }
 

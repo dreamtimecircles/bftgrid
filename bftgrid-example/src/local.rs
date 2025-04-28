@@ -115,8 +115,8 @@ where
                 self.actor_system.spawn_async_send(
                     async move {
                         log::info!("Actor1 simulating async work");
+                        Ping()
                     },
-                    |_| Ping(),
                     self.self_ref.new_ref(),
                     None,
                 );
