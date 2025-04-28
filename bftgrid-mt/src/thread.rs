@@ -1,5 +1,6 @@
 use std::{
     fmt::Debug,
+    future::Future,
     mem,
     sync::{
         mpsc::{self, Sender},
@@ -237,31 +238,27 @@ impl ActorSystem for ThreadActorSystem {
             .unwrap();
     }
 
-    fn spawn_async_send<MsgT, HandlerT, O>(
+    fn spawn_async_send<MsgT, HandlerT>(
         &self,
-        f: impl std::prelude::rust_2024::Future<Output = O> + Send + 'static,
-        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        f: impl Future<Output = MsgT> + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        self.runtime.spawn_async_send(f, to_msg, actor_ref, delay);
+        self.runtime.spawn_async_send(f, actor_ref, delay);
     }
 
-    fn thread_blocking_send<MsgT, HandlerT, R>(
+    fn spawn_thread_blocking_send<MsgT, HandlerT>(
         &self,
-        f: impl FnOnce() -> R + Send + 'static,
-        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
+        f: impl FnOnce() -> MsgT + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
-        R: Send + 'static,
     {
-        self.runtime
-            .thread_blocking_send(f, to_msg, actor_ref, delay);
+        self.runtime.spawn_thread_blocking_send(f, actor_ref, delay);
     }
 }

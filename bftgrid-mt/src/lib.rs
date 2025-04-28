@@ -18,8 +18,7 @@ pub mod tokio;
 ///
 /// Dropping an ['AsyncRuntime'] also extracts and shuts down the underlying owned Tokio runtime
 ///  without waiting for tasks to finish. This allows dropping it also from async contexts,
-///  but users may want to ensure that all tasks are finished beforehand, if leaks
-///  may otherwise occur, for example if dropping occurs mid-program and not at the end.
+///  but users may want to ensure manually that all tasks are finished beforehand.
 #[derive(Debug)]
 pub struct AsyncRuntime {
     pub name: Arc<String>,
@@ -63,6 +62,9 @@ impl AsyncRuntime {
         }
     }
 
+    /// Blocks the current thread executing the passed future to completion.
+    ///  In an async context, this relinquishes an executor thread to then re-enter
+    ///  the async context, which is inefficient and should be done sparingly.
     pub fn await_async<R>(&self, f: impl Future<Output = R>) -> R {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => {
@@ -116,19 +118,19 @@ impl AsyncRuntime {
         }
     }
 
-    pub fn spawn_async_send<MsgT, HandlerT, O>(
+    pub fn spawn_async_send<MsgT, HandlerT>(
         &self,
-        f: impl Future<Output = O> + Send + 'static,
-        to_msg: impl FnOnce(O) -> MsgT + Send + 'static,
+        f: impl Future<Output = MsgT> + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
-    ) where
+    ) -> ::tokio::task::JoinHandle<()>
+    where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => handle.spawn(async move {
-                actor_ref.send(to_msg(f.await), delay);
+                actor_ref.send(f.await, delay);
             }),
             _ => self
                 .tokio
@@ -137,21 +139,28 @@ impl AsyncRuntime {
                 .as_ref()
                 .unwrap()
                 .spawn(async move {
-                    actor_ref.send(to_msg(f.await), delay);
+                    actor_ref.send(f.await, delay);
                 }),
-        };
+        }
     }
 
-    pub fn thread_blocking_send<MsgT, HandlerT, R>(
+    /// Spawn an async task that may allocate an executor thread
+    ///  to execute a possibly long-running and thread-blocking
+    ///  function to completion, then sending the result to the
+    ///  passed actor reference.
+    ///
+    ///  It can be called from any context but creating a dedicated thread
+    ///  to run the thread-blocking function, is inefficient and should be
+    ///  done sparingly.
+    pub fn spawn_thread_blocking_send<MsgT, HandlerT>(
         &self,
-        f: impl FnOnce() -> R + Send + 'static,
-        to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, HandlerT>,
+        f: impl FnOnce() -> MsgT + Send + 'static,
+        actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
-    ) where
+    ) -> ::tokio::task::JoinHandle<()>
+    where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
-        R: Send + 'static,
     {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => {
@@ -160,25 +169,39 @@ impl AsyncRuntime {
                     self.name,
                 );
                 let _guard = handle.enter();
-                let actor_system_name = self.name.clone();
-                self.spawn_async(async move {
-                    match ::tokio::task::spawn_blocking(f).await {
-                        Ok(result) => actor_ref.send(to_msg(result), delay),
-                        Err(_) => log::error!(
-                            "Tokio runtime '{}': blocking task failed",
-                            actor_system_name
-                        ),
-                    };
-                });
+                self.spawn_async_blocking_send(f, actor_ref, delay)
             }
             _ => {
                 log::debug!(
                     "Tokio runtime '{}' performing blocking and then send outside of an async context",
                     self.name,
                 );
-                actor_ref.send(to_msg(f()), delay)
+                let _guard = self.tokio.read().unwrap().as_ref().unwrap().enter();
+                self.spawn_async_blocking_send(f, actor_ref, delay)
             }
         }
+    }
+
+    fn spawn_async_blocking_send<MsgT, HandlerT>(
+        &self,
+        f: impl FnOnce() -> MsgT + Send + 'static,
+        mut actor_ref: AnActorRef<MsgT, HandlerT>,
+        delay: Option<Duration>,
+    ) -> ::tokio::task::JoinHandle<()>
+    where
+        MsgT: ActorMsg + 'static,
+        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    {
+        let actor_system_name = self.name.clone();
+        self.spawn_async(async move {
+            match ::tokio::task::spawn_blocking(f).await {
+                Ok(result) => actor_ref.send(result, delay),
+                Err(_) => log::error!(
+                    "Tokio runtime '{}': blocking send task failed",
+                    actor_system_name
+                ),
+            };
+        })
     }
 }
 
