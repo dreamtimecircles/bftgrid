@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["main"],"mod":["utils"],"struct":["Actor1","Actor2","Node1P2pNetworkInputHandler","Node2P2pNetworkInputHandler","Ping"]};
+window.SIDEBAR_ITEMS = {"fn":["main"],"mod":["utils"],"struct":["Actor1","Actor2","NodeP2PNetworkInputHandler","Ping"]};
