@@ -12,8 +12,9 @@ use std::{
 use bftgrid_core::actor::{
     ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, Task, TypedHandler,
 };
+use tokio::runtime::Runtime;
 
-use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime, TokioRuntimeOrHandle};
+use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime};
 
 #[derive(Debug)]
 struct ThreadJoinable<T> {
@@ -123,15 +124,10 @@ pub struct ThreadActorSystem {
 }
 
 impl ThreadActorSystem {
-    /// Caches the passed runtime or handle, else the contextual handle,
-    ///  if available, else it creates a runtime with multi-threaded support,
+    /// Owns the passed runtime, using it only if no contextual handle is available;
+    ///  if `None` is passed, it creates a runtime with multi-threaded support,
     ///  CPU-based thread pool size and all features enabled.
-    ///
-    /// The cached runtime or handle are used only if no contextual handle is available.
-    ///
-    /// As generally for Tokio, anything that owns a runtime cannot be dropped
-    ///  from an async context.
-    pub fn new(name: impl Into<String>, tokio: Option<TokioRuntimeOrHandle>) -> Self {
+    pub fn new(name: impl Into<String>, tokio: Option<Runtime>) -> Self {
         ThreadActorSystem {
             runtime: Arc::new(AsyncRuntime::new(name, tokio)),
             tasks: Default::default(),
@@ -154,8 +150,7 @@ impl Task for ThreadActorSystem {
 impl Joinable<()> for ThreadActorSystem {
     fn join(self) {
         let mut locked_tasks = self.tasks.lock().unwrap();
-        let mut tasks = vec![];
-        mem::swap(&mut *locked_tasks, &mut tasks);
+        let tasks = mem::take(&mut *locked_tasks);
         // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
         drop(locked_tasks);
         log::info!(
@@ -255,7 +250,7 @@ impl ActorSystem for ThreadActorSystem {
         self.runtime.spawn_async_send(f, to_msg, actor_ref, delay);
     }
 
-    fn spawn_blocking_send<MsgT, HandlerT, R>(
+    fn thread_blocking_send<MsgT, HandlerT, R>(
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
@@ -267,6 +262,6 @@ impl ActorSystem for ThreadActorSystem {
         R: Send + 'static,
     {
         self.runtime
-            .spawn_blocking_send(f, to_msg, actor_ref, delay);
+            .thread_blocking_send(f, to_msg, actor_ref, delay);
     }
 }

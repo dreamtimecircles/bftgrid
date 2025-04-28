@@ -1,6 +1,6 @@
 use std::{
     future::Future,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
 
@@ -9,54 +9,63 @@ use bftgrid_core::actor::{ActorMsg, AnActorRef, Task, TypedHandler};
 pub mod thread;
 pub mod tokio;
 
-#[derive(Debug)]
-pub enum TokioRuntimeOrHandle {
-    Runtime(Arc<::tokio::runtime::Runtime>),
-    Handle(::tokio::runtime::Handle),
-}
-
+/// Offers a unified interface for awaiting both async tasks and thread-blocking tasks
+///  from any context.
+///
+/// [`Clone`] is intentionally not implemented so that an [`AsyncRuntime`]
+///  can only be shared explicitly, as the destructor needs to shut down the
+///  underlying owned Tokio runtime, so it needs to be called only once all references are dropped.
+///
+/// Dropping an ['AsyncRuntime'] also extracts and shuts down the underlying owned Tokio runtime
+///  without waiting for tasks to finish. This allows dropping it also from async contexts,
+///  but users may want to ensure that all tasks are finished beforehand, if leaks
+///  may otherwise occur, for example if dropping occurs mid-program and not at the end.
 #[derive(Debug)]
 pub struct AsyncRuntime {
     pub name: Arc<String>,
-    tokio: TokioRuntimeOrHandle,
+    // Using a lock so that the field can be written to extract the runtime
+    //  and then shut it down on drop without waiting for the tasks to finish,
+    //  which allows dropping it also from async contexts.
+    //
+    // Using a RwLock instead of a Mutex allows to do so without requiring lock
+    //  exclusivity for normal operations (which only require read access);
+    //  this avoids likely deadlocks, as an `AsyncRuntime` is often shared.
+    tokio: Arc<RwLock<Option<::tokio::runtime::Runtime>>>,
 }
 
-/// Unified interface for awaiting both async tasks and thread-blocking tasks
-/// from any context.
+impl Drop for AsyncRuntime {
+    fn drop(&mut self) {
+        log::debug!("Dropping Tokio runtime '{}'", self.name);
+        // Extract the tokio runtime from the RwLock and shut it down
+        if let Some(tokio) = self.tokio.write().unwrap().take() {
+            tokio.shutdown_background();
+        }
+    }
+}
+
 impl AsyncRuntime {
-    /// Caches the passed runtime or handle, else the contextual handle,
-    ///  if available, else it creates a runtime with multi-threaded support,
+    /// Owns the passed runtime, using it only if no contextual handle is available;
+    ///  if `None` is passed, it creates a runtime with multi-threaded support,
     ///  CPU-based thread pool size and all features enabled.
-    ///
-    /// The cached runtime or handle are used only if no contextual handle is available.
-    ///
-    /// As generally for Tokio, anything that owns a runtime cannot be dropped
-    ///  from an async context.
-    pub fn new(name: impl Into<String>, tokio: Option<TokioRuntimeOrHandle>) -> AsyncRuntime {
+    pub fn new(name: impl Into<String>, tokio: Option<::tokio::runtime::Runtime>) -> AsyncRuntime {
         let runtime_name = Arc::new(name.into());
         AsyncRuntime {
             name: runtime_name.clone(),
-            tokio: tokio.unwrap_or(match ::tokio::runtime::Handle::try_current() {
-                Ok(handle) => {
-                    log::debug!("Reusing existing Tokyio runtime as '{}'", runtime_name,);
-                    TokioRuntimeOrHandle::Handle(handle)
-                }
-                _ => {
-                    log::debug!("Creating new Tokio runtime as '{}'", runtime_name,);
-                    TokioRuntimeOrHandle::Runtime(Arc::new(
-                        ::tokio::runtime::Builder::new_multi_thread()
-                            .enable_all()
-                            .build()
-                            .unwrap(),
-                    ))
-                }
-            }),
+            tokio: Arc::new(RwLock::new(tokio.or({
+                log::debug!("Creating new Tokio runtime as '{}'", runtime_name);
+                Some(
+                    ::tokio::runtime::Builder::new_multi_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap(),
+                )
+            }))),
         }
     }
 
     pub fn await_async<R>(&self, f: impl Future<Output = R>) -> R {
-        match self.get_runtime_or_handle() {
-            TokioRuntimeOrHandle::Handle(handle) => {
+        match ::tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
                 log::debug!(
                     "Tokio runtime '{}' blocking on async inside an async context",
                     self.name,
@@ -69,10 +78,7 @@ impl AsyncRuntime {
                     "Tokio runtime '{}' blocking on async outside of an async context",
                     self.name,
                 );
-                match &self.tokio {
-                    TokioRuntimeOrHandle::Runtime(runtime) => runtime.block_on(f),
-                    TokioRuntimeOrHandle::Handle(handle) => handle.block_on(f),
-                }
+                self.tokio.read().unwrap().as_ref().unwrap().block_on(f)
             }
         }
     }
@@ -84,15 +90,15 @@ impl AsyncRuntime {
     where
         R: Send + 'static,
     {
-        match self.get_runtime_or_handle() {
-            TokioRuntimeOrHandle::Runtime(runtime) => runtime.spawn(f),
-            TokioRuntimeOrHandle::Handle(handle) => handle.spawn(f),
+        match ::tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle.spawn(f),
+            _ => self.tokio.read().unwrap().as_ref().unwrap().spawn(f),
         }
     }
 
     pub fn thread_blocking<R>(&self, f: impl FnOnce() -> R) -> R {
-        match self.get_runtime_or_handle() {
-            TokioRuntimeOrHandle::Handle(handle) => {
+        match ::tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
                 log::debug!(
                     "Tokio runtime '{}' blocking thread inside an async context",
                     self.name,
@@ -120,17 +126,23 @@ impl AsyncRuntime {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        match self.get_runtime_or_handle() {
-            TokioRuntimeOrHandle::Runtime(runtime) => runtime.spawn(async move {
+        match ::tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle.spawn(async move {
                 actor_ref.send(to_msg(f.await), delay);
             }),
-            TokioRuntimeOrHandle::Handle(handle) => handle.spawn(async move {
-                actor_ref.send(to_msg(f.await), delay);
-            }),
+            _ => self
+                .tokio
+                .read()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .spawn(async move {
+                    actor_ref.send(to_msg(f.await), delay);
+                }),
         };
     }
 
-    pub fn spawn_blocking_send<MsgT, HandlerT, R>(
+    pub fn thread_blocking_send<MsgT, HandlerT, R>(
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
@@ -141,8 +153,8 @@ impl AsyncRuntime {
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
         R: Send + 'static,
     {
-        match self.get_runtime_or_handle() {
-            TokioRuntimeOrHandle::Handle(handle) => {
+        match ::tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
                 log::debug!(
                     "Tokio runtime '{}' performing blocking and then send inside an async context",
                     self.name,
@@ -166,27 +178,6 @@ impl AsyncRuntime {
                 );
                 actor_ref.send(to_msg(f()), delay)
             }
-        }
-    }
-
-    fn get_runtime_or_handle(&self) -> TokioRuntimeOrHandle {
-        match ::tokio::runtime::Handle::try_current() {
-            Ok(handle) => {
-                log::debug!(
-                    "Async runtime '{}' using contextual Tokio runtime handle",
-                    self.name,
-                );
-                TokioRuntimeOrHandle::Handle(handle)
-            }
-            Err(_) => match &self.tokio {
-                TokioRuntimeOrHandle::Runtime(runtime) => {
-                    log::debug!("Tokio runtime '{}' using existing runtime", self.name,);
-                    TokioRuntimeOrHandle::Runtime(runtime.clone())
-                }
-                TokioRuntimeOrHandle::Handle(handle) => {
-                    TokioRuntimeOrHandle::Handle(handle.clone())
-                }
-            },
         }
     }
 }

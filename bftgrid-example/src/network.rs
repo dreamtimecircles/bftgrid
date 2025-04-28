@@ -150,19 +150,16 @@ where
 }
 
 #[derive(Debug)]
-struct Node1P2pNetworkInputHandler<ActorSystemT, P2PNetworkT>
+struct NodeP2PNetworkInputHandler<HandlerT>
 where
-    ActorSystemT: ActorSystem + 'static,
-    P2PNetworkT: P2PNetworkClient,
+    HandlerT: TypedHandler<MsgT = Ping> + 'static,
 {
-    actor1_ref: AnActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>,
+    actor_ref: AnActorRef<Ping, HandlerT>,
 }
 
-impl<ActorSystemT, P2PNetworkT> UntypedHandler
-    for Node1P2pNetworkInputHandler<ActorSystemT, P2PNetworkT>
+impl<HandlerT> UntypedHandler for NodeP2PNetworkInputHandler<HandlerT>
 where
-    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
-    P2PNetworkT: P2PNetworkClient + std::fmt::Debug + Send + 'static,
+    HandlerT: TypedHandler<MsgT = Ping> + 'static,
 {
     fn receive_untyped(
         &mut self,
@@ -170,7 +167,7 @@ where
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
         match (message as Box<dyn Any>).downcast::<Ping>() {
             Ok(typed_message) => {
-                self.actor1_ref.send(*typed_message, None);
+                self.actor_ref.send(*typed_message, None);
                 Result::Ok(None)
             }
             Err(_) => Result::Err(MessageNotSupported()),
@@ -178,34 +175,8 @@ where
     }
 }
 
-#[derive(Debug)]
-struct Node2P2pNetworkInputHandler<P2PNetworkT>
-where
-    P2PNetworkT: P2PNetworkClient,
-{
-    actor2_ref: AnActorRef<Ping, Actor2<P2PNetworkT>>,
-}
-
-impl<P2PNetworkT> UntypedHandler for Node2P2pNetworkInputHandler<P2PNetworkT>
-where
-    P2PNetworkT: P2PNetworkClient + std::fmt::Debug + Send + 'static,
-{
-    fn receive_untyped(
-        &mut self,
-        message: AnActorMsg,
-    ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match (message as Box<dyn Any>).downcast::<Ping>() {
-            Ok(typed_message) => {
-                self.actor2_ref.send(*typed_message, None);
-                Result::Ok(None)
-            }
-            Err(_) => Result::Err(MessageNotSupported()),
-        }
-    }
-}
-
-// Components that need a Tokio runtime will reuse the one from the async context, if any,
-//  otherwise they will create a new one.
+// Components that need a Tokio runtime will reuse the handle from the async context, if any,
+//  otherwise they will use an owned runtime.
 #[tokio::main]
 async fn main() {
     utils::setup_logging(false);
@@ -236,15 +207,14 @@ async fn main() {
         }),
         None,
     );
-    node1
-        .start(
-            Node1P2pNetworkInputHandler {
-                actor1_ref: actor1_ref.new_ref(),
-            },
-            |_buf| Ok(Ping {}),
-            0,
-        )
-        .unwrap();
+    let node1_p2p_network_input_handler = NodeP2PNetworkInputHandler {
+        actor_ref: actor1_ref.new_ref(),
+    };
+    drop(
+        node1
+            .start(node1_p2p_network_input_handler, |_buf| Ok(Ping {}), 0)
+            .unwrap(),
+    );
     log::info!("Started node1");
     let node2 = TokioP2PNetworkServer::new(
         "node2",
@@ -255,28 +225,21 @@ async fn main() {
         }),
         None,
     );
-    node2
-        .start(
-            Node2P2pNetworkInputHandler {
-                actor2_ref: actor2_ref.new_ref(),
-            },
-            |_buf| Ok(Ping {}),
-            0,
-        )
-        .unwrap();
+    let node2_p2p_network_input_handler = NodeP2PNetworkInputHandler {
+        actor_ref: actor2_ref.new_ref(),
+    };
+    drop(
+        node2
+            .start(node2_p2p_network_input_handler, |_buf| Ok(Ping {}), 0)
+            .unwrap(),
+    );
     log::info!("Started node2");
     actor1_ref.send(Ping(), None);
-    log::info!(
-        "Sent startup ping to actor1; joining actors, stopping servers and joining actor systems"
-    );
+    log::info!("Sent startup ping to actor1; joining actors, actor systems and exiting");
     actor2_ref.join();
     log::info!("Joined Actor2");
     actor1_ref.join();
     log::info!("Joined Actor1");
-    node1.stop();
-    log::info!("Stopped node1");
-    node2.stop();
-    log::info!("Stopped node2");
     tokio_actor_system.join();
     log::info!("Joined Tokio actor system");
     thread_actor_system.join();
