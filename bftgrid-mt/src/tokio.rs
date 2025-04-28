@@ -13,11 +13,12 @@ use bftgrid_core::actor::{
 use futures::future;
 use tokio::{
     net::UdpSocket,
+    runtime::Runtime,
     sync::mpsc::{self as tmpsc, UnboundedSender as TUnboundedSender},
     task::JoinHandle as TokioJoinHandle,
 };
 
-use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime, TokioRuntimeOrHandle};
+use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime};
 
 #[derive(Debug)]
 struct TokioTask<T> {
@@ -129,7 +130,7 @@ impl TokioActorSystem {
     ///
     /// As generally for Tokio, anything that owns a runtime cannot be dropped
     ///  from an async context.
-    pub fn new(name: impl Into<String>, tokio: Option<TokioRuntimeOrHandle>) -> Self {
+    pub fn new(name: impl Into<String>, tokio: Option<Runtime>) -> Self {
         TokioActorSystem {
             runtime: Arc::new(AsyncRuntime::new(name, tokio)),
             tasks: Default::default(),
@@ -262,7 +263,7 @@ impl ActorSystem for TokioActorSystem {
         self.runtime.spawn_async_send(f, to_msg, actor_ref, delay);
     }
 
-    fn spawn_blocking_send<MsgT, HandlerT, R>(
+    fn thread_blocking_send<MsgT, HandlerT, R>(
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
@@ -274,7 +275,7 @@ impl ActorSystem for TokioActorSystem {
         R: Send + 'static,
     {
         self.runtime
-            .spawn_blocking_send(f, to_msg, actor_ref, delay);
+            .thread_blocking_send(f, to_msg, actor_ref, delay);
     }
 }
 
@@ -292,11 +293,7 @@ impl TokioP2PNetworkServer {
     ///
     /// As generally for Tokio, anything that owns a runtime cannot be dropped
     ///  from an async context.
-    pub fn new(
-        name: impl Into<String>,
-        socket: UdpSocket,
-        tokio: Option<TokioRuntimeOrHandle>,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, socket: UdpSocket, tokio: Option<Runtime>) -> Self {
         TokioP2PNetworkServer {
             socket: Arc::new(socket),
             runtime: AsyncRuntime::new(name, tokio),
@@ -372,13 +369,6 @@ impl TokioP2PNetworkServer {
             }
         }))
     }
-
-    pub fn stop(self) {
-        log::info!(
-            "Async actor netork server '{}' stopping",
-            self.socket.local_addr().unwrap()
-        );
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -399,7 +389,7 @@ impl TokioP2PNetworkClient {
     pub fn new(
         name: impl Into<String>,
         initial_peers: Vec<impl Into<String>>,
-        tokio: Option<TokioRuntimeOrHandle>,
+        tokio: Option<Runtime>,
     ) -> Self {
         let runtime = Arc::new(AsyncRuntime::new(name, tokio));
         let runtime_clone = runtime.clone();

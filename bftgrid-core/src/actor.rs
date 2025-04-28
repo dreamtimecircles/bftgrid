@@ -147,7 +147,7 @@ pub trait ActorSystem: Clone {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static;
 
-    fn spawn_blocking_send<MsgT, HandlerT, R>(
+    fn thread_blocking_send<MsgT, HandlerT, R>(
         &self,
         f: impl FnOnce() -> R + Send + 'static,
         to_msg: impl FnOnce(R) -> MsgT + Send + 'static,
