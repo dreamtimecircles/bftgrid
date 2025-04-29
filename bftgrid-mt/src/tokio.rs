@@ -8,8 +8,8 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, P2PNetworkClient,
-    P2PNetworkError, P2PNetworkResult, Task, TypedHandler, UntypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, P2PNetworkClient,
+    P2PNetworkError, P2PNetworkResult, Task, TypedMsgHandler, UntypedMsgHandler,
 };
 use futures::future;
 use tokio::{
@@ -22,24 +22,24 @@ use tokio::{
 use crate::{notify_close, push_async_task, spawn_async_task, AsyncRuntime, TokioTask};
 
 #[derive(Debug)]
-pub struct TokioActor<MsgT, HandlerT>
+pub struct TokioActor<MsgT, MsgHandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     actor_system: TokioActorSystem,
     tx: TUnboundedSender<MsgT>,
     // Use a Tokio mutex, as the lock is held for the whole duration of the handler receive,
     //  which can be long and block the thread, so the async routine that invokes it is
     //  able to yield to other tasks in the meanwhile.
-    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<HandlerT>>>,
+    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<MsgHandlerT>>>,
     close_cond: Arc<(std::sync::Mutex<bool>, Condvar)>,
 }
 
-impl<MsgT, HandlerT> Task for TokioActor<MsgT, HandlerT>
+impl<MsgT, MsgHandlerT> Task for TokioActor<MsgT, MsgHandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn is_finished(&self) -> bool {
         let (closed_mutex, _) = &*self.close_cond;
@@ -47,10 +47,10 @@ where
     }
 }
 
-impl<MsgT, HandlerT> Joinable<()> for TokioActor<MsgT, HandlerT>
+impl<MsgT, MsgHandlerT> Joinable<()> for TokioActor<MsgT, MsgHandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn join(self) {
         let (close_mutex, cvar) = &*self.close_cond;
@@ -67,10 +67,10 @@ where
     }
 }
 
-impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for TokioActor<MsgT, HandlerT>
+impl<MsgT, MsgHandlerT> ActorRef<MsgT, MsgHandlerT> for TokioActor<MsgT, MsgHandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
@@ -83,7 +83,7 @@ where
         });
     }
 
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
+    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, MsgHandlerT>> {
         Box::new(TokioActor {
             actor_system: self.actor_system.clone(),
             tx: self.tx.clone(),
@@ -165,25 +165,25 @@ impl Task for TokioActorSystem {
     }
 }
 
-impl ActorSystem for TokioActorSystem {
-    type ActorRefT<MsgT, HandlerT>
-        = TokioActor<MsgT, HandlerT>
+impl ActorSystemHandle for TokioActorSystem {
+    type ActorRefT<MsgT, MsgHandlerT>
+        = TokioActor<MsgT, MsgHandlerT>
     where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
 
-    fn create<MsgT, HandlerT>(
+    fn create<MsgT, MsgHandlerT>(
         &mut self,
         name: impl Into<String>,
         node_id: impl Into<String>,
-    ) -> TokioActor<MsgT, HandlerT>
+    ) -> TokioActor<MsgT, MsgHandlerT>
     where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         let (handler_tx, mut handler_rx) =
-            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<HandlerT>>>();
+            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<MsgHandlerT>>>();
         let close_cond = Arc::new((std::sync::Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
@@ -229,13 +229,13 @@ impl ActorSystem for TokioActorSystem {
         }
     }
 
-    fn set_handler<MsgT, HandlerT>(
+    fn set_handler<MsgT, MsgHandlerT>(
         &mut self,
-        actor_ref: &mut TokioActor<MsgT, HandlerT>,
-        handler: HandlerT,
+        actor_ref: &mut TokioActor<MsgT, MsgHandlerT>,
+        handler: MsgHandlerT,
     ) where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         actor_ref
             .handler_tx
@@ -243,14 +243,14 @@ impl ActorSystem for TokioActorSystem {
             .unwrap();
     }
 
-    fn spawn_async_send<MsgT, HandlerT>(
+    fn spawn_async_send<MsgT, MsgHandlerT>(
         &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         push_async_task(
             self.async_tasks.lock().unwrap().as_mut(),
@@ -258,14 +258,14 @@ impl ActorSystem for TokioActorSystem {
         );
     }
 
-    fn spawn_thread_blocking_send<MsgT, HandlerT>(
+    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
         &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         push_async_task(
             self.async_tasks.lock().unwrap().as_mut(),
@@ -290,9 +290,9 @@ impl TokioP2PNetworkServer {
         }
     }
 
-    pub fn start<UntypedHandlerT: UntypedHandler + 'static, MsgT, DeT>(
+    pub fn start<UntypedMsgHandlerT: UntypedMsgHandler + 'static, MsgT, DeT>(
         &self,
-        mut handler: UntypedHandlerT,
+        mut handler: UntypedMsgHandlerT,
         deserializer: DeT,
         buffer_size: usize,
     ) -> io::Result<TokioJoinHandle<()>>

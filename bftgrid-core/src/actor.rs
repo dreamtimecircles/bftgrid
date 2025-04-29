@@ -26,9 +26,9 @@ pub enum ActorControl {
     Exit(),
 }
 
-/// A [`TypedHandler`] is an actor that can handle messages of a specific type
+/// A [`TypedMsgHandler`] is an actor behavior that can handle messages of a specific type
 /// and optionally return an [`ActorControl`] message.
-pub trait TypedHandler: Send + Debug {
+pub trait TypedMsgHandler: Send + Debug {
     type MsgT: ActorMsg;
 
     fn receive(&mut self, message: Self::MsgT) -> Option<ActorControl>;
@@ -47,29 +47,29 @@ impl Error for MessageNotSupported {}
 
 pub type AnActorMsg = Box<dyn ActorMsg>;
 
-/// An [`UntypedHandler`] is an actor handler that can receive messages of any type,
+/// An [`UntypedMsgHandler`] is an actor handler that can receive messages of any type,
 /// although it may refuse to handle some of them.
-pub trait UntypedHandler: Send + Debug {
+pub trait UntypedMsgHandler: Send + Debug {
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported>;
 }
 
-pub type UntypedHandlerBox = Box<dyn UntypedHandler>;
+pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
 
-/// A blanket [`UntypedHandler`] implementation for [`TypedHandler`]
+/// A blanket [`UntypedMsgHandler`] implementation for [`TypedMsgHandler`]
 /// to allow any typed actor to be used as a network input actor.
-impl<MsgT, HandlerT> UntypedHandler for HandlerT
+impl<MsgT, MsgHandlerT> UntypedMsgHandler for MsgHandlerT
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT>,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT>,
 {
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match (message as Box<dyn Any>).downcast::<HandlerT::MsgT>() {
+        match (message as Box<dyn Any>).downcast::<MsgHandlerT::MsgT>() {
             Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
             Err(_) => Result::Err(MessageNotSupported()),
         }
@@ -82,78 +82,78 @@ pub trait Task: Send + Debug {
 }
 
 /// A [`Joinable`] can be awaited for completion in a thread-blocking fashion.
-/// Specific types of [`ActorRef`] and [`ActorSystem`] can be joined to wait for their completion.
+/// Specific types of [`ActorRef`] and [`ActorSystemHandle`] can be joined to wait for their completion.
 pub trait Joinable<Output>: Task + Send + Debug {
     fn join(self) -> Output;
 }
 
-pub type AnActorRef<MsgT, HandlerT> = Box<dyn ActorRef<MsgT, HandlerT>>;
+pub type AnActorRef<MsgT, MsgHandlerT> = Box<dyn ActorRef<MsgT, MsgHandlerT>>;
 
 /// An [`ActorRef`] can asynchronously send messages to the underlying actor, optionally with a delay, and create new actor references.
 /// Actor implementations can use [`ActorRef`]s to send messages to themselves and to other actors.
-pub trait ActorRef<MsgT, HandlerT>: Send + Debug
+pub trait ActorRef<MsgT, MsgHandlerT>: Send + Debug
 where
     MsgT: ActorMsg + 'static,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>);
-    fn new_ref(&self) -> AnActorRef<MsgT, HandlerT>;
+    fn new_ref(&self) -> AnActorRef<MsgT, MsgHandlerT>;
 }
 
-impl<MsgT, HandlerT> Clone for AnActorRef<MsgT, HandlerT>
+impl<MsgT, MsgHandlerT> Clone for AnActorRef<MsgT, MsgHandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn clone(&self) -> Self {
         self.new_ref()
     }
 }
 
-/// An [`ActorSystem`] allows spawning actors by creating an [`ActoRef`] and setting its handler.
+/// An [`ActorSystemHandle`] allows spawning actors by creating an [`ActorRef`] and setting its handler.
 /// The handler of the underlying actor can also be changed at any time.
-/// An [`ActorSystem`] can be cloned to obtain new references to it.
-/// Actors can use [`ActorSystem`] references to spawn new actors and even to change their own handlers.
-pub trait ActorSystem: Clone {
-    type ActorRefT<MsgT, HandlerT>: ActorRef<MsgT, HandlerT>
+/// An [`ActorSystemHandle`] can be cloned.
+/// Actors themselves can use [`ActorSystemHandle`]s to spawn new actors and even to change their own handlers.
+pub trait ActorSystemHandle: Clone {
+    type ActorRefT<MsgT, MsgHandlerT>: ActorRef<MsgT, MsgHandlerT>
     where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
 
-    fn create<MsgT, HandlerT>(
+    fn create<MsgT, MsgHandlerT>(
         &mut self,
         node_id: impl Into<String>,
         name: impl Into<String>,
-    ) -> Self::ActorRefT<MsgT, HandlerT>
+    ) -> Self::ActorRefT<MsgT, MsgHandlerT>
     where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT>;
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>;
 
-    fn set_handler<MsgT, HandlerT>(
+    fn set_handler<MsgT, MsgHandlerT>(
         &mut self,
-        actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
-        handler: HandlerT,
+        actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
+        handler: MsgHandlerT,
     ) where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT>;
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>;
 
-    fn spawn_async_send<MsgT, HandlerT>(
+    fn spawn_async_send<MsgT, MsgHandlerT>(
         &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
 
-    fn spawn_thread_blocking_send<MsgT, HandlerT>(
+    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
         &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static;
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
 }
 
 #[derive(Error, Debug, Clone)]
@@ -168,7 +168,7 @@ pub enum P2PNetworkError {
 
 pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
 
-/// A [`P2PNetwork`] allows sending messages to other nodes in a P2P network.
+/// A [`P2PNetworkClient`] allows sending messages to other nodes in a P2P network.
 pub trait P2PNetworkClient: Clone {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,

@@ -6,7 +6,7 @@ use std::{
 };
 
 use ::tokio::task::JoinHandle;
-use bftgrid_core::actor::{ActorMsg, AnActorRef, Task, TypedHandler};
+use bftgrid_core::actor::{ActorMsg, AnActorRef, Task, TypedMsgHandler};
 
 pub mod thread;
 pub mod tokio;
@@ -134,15 +134,15 @@ impl AsyncRuntime {
         }
     }
 
-    pub fn spawn_async_send<MsgT, HandlerT>(
+    pub fn spawn_async_send<MsgT, MsgHandlerT>(
         &self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, HandlerT>,
+        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) -> ::tokio::task::JoinHandle<()>
     where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => handle.spawn(async move {
@@ -168,15 +168,15 @@ impl AsyncRuntime {
     ///  It can be called from any context but creating a dedicated thread
     ///  to run the thread-blocking function, is inefficient and should be
     ///  done sparingly.
-    pub fn spawn_thread_blocking_send<MsgT, HandlerT>(
+    pub fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, HandlerT>,
+        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) -> ::tokio::task::JoinHandle<()>
     where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => {
@@ -198,15 +198,15 @@ impl AsyncRuntime {
         }
     }
 
-    fn spawn_async_blocking_send<MsgT, HandlerT>(
+    fn spawn_async_blocking_send<MsgT, MsgHandlerT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, HandlerT>,
+        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) -> ::tokio::task::JoinHandle<()>
     where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let actor_system_name = self.name.clone();
         self.spawn_async(async move {
