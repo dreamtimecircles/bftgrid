@@ -2,14 +2,43 @@ use std::{
     fmt::Debug,
     future::Future,
     sync::{Arc, Condvar, Mutex, RwLock},
+    thread::JoinHandle as ThreadJoinHandle,
     time::Duration,
 };
 
-use ::tokio::task::JoinHandle;
-use bftgrid_core::actor::{ActorMsg, AnActorRef, Task, TypedMsgHandler};
+use ::tokio::task::JoinHandle as TokioJoinHandle;
+
+use bftgrid_core::actor::{ActorMsg, AnActorRef, Joinable, Task, TypedMsgHandler};
 
 pub mod thread;
 pub mod tokio;
+
+#[derive(Debug)]
+struct ThreadJoinable<T> {
+    value: Option<ThreadJoinHandle<T>>,
+}
+
+impl<T> Task for ThreadJoinable<T>
+where
+    T: Debug + Send,
+{
+    fn is_finished(&self) -> bool {
+        if let Some(ref value) = self.value {
+            value.is_finished()
+        } else {
+            true
+        }
+    }
+}
+
+impl Joinable<()> for ThreadJoinable<()> {
+    fn join(&mut self) {
+        let value = self.value.take();
+        if let Some(v) = value {
+            v.join().unwrap()
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct TokioTask<T> {
@@ -248,11 +277,27 @@ fn spawn_async_task<T>(
     });
 }
 
-fn push_async_task<T>(tasks: &mut Vec<TokioTask<T>>, tokio_join_handle: JoinHandle<T>)
+fn push_async_task<T>(tasks: &mut Vec<TokioTask<T>>, tokio_join_handle: TokioJoinHandle<T>)
 where
     T: Send + std::fmt::Debug,
 {
     cleanup_complete_tasks(tasks).push(TokioTask {
         value: tokio_join_handle,
     });
+}
+
+fn join_tasks(async_runtime: &AsyncRuntime, tasks: (Vec<ThreadJoinable<()>>, Vec<TokioTask<()>>)) {
+    let (thread_blocking_tasks, async_tasks) = tasks;
+    log::debug!(
+        "Thread actor system '{}' joining {} thread blocking tasks and {} async tasks",
+        async_runtime.name,
+        thread_blocking_tasks.len(),
+        async_tasks.len(),
+    );
+    for mut t in thread_blocking_tasks {
+        t.join();
+    }
+    for t in async_tasks {
+        async_runtime.block_on_async(async move { t.value.await.unwrap() });
+    }
 }

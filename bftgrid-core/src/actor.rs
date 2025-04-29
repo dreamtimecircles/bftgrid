@@ -84,7 +84,7 @@ pub trait Task: Send + Debug {
 /// A [`Joinable`] can be awaited for completion in a thread-blocking fashion.
 /// Specific types of [`ActorRef`] and [`ActorSystemHandle`] can be joined to wait for their completion.
 pub trait Joinable<Output>: Task + Send + Debug {
-    fn join(self) -> Output;
+    fn join(&mut self) -> Output;
 }
 
 pub type AnActorRef<MsgT, MsgHandlerT> = Box<dyn ActorRef<MsgT, MsgHandlerT>>;
@@ -121,7 +121,7 @@ pub trait ActorSystemHandle: Clone {
         MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
 
     fn create<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
     ) -> Self::ActorRefT<MsgT, MsgHandlerT>
@@ -130,7 +130,7 @@ pub trait ActorSystemHandle: Clone {
         MsgHandlerT: TypedMsgHandler<MsgT = MsgT>;
 
     fn set_handler<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
         handler: MsgHandlerT,
     ) where
@@ -138,7 +138,7 @@ pub trait ActorSystemHandle: Clone {
         MsgHandlerT: TypedMsgHandler<MsgT = MsgT>;
 
     fn spawn_async_send<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         f: impl Future<Output = MsgT> + Send + 'static,
         actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
@@ -147,7 +147,7 @@ pub trait ActorSystemHandle: Clone {
         MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
 
     fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
         actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
