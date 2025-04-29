@@ -1,13 +1,29 @@
 use std::{
+    fmt::Debug,
     future::Future,
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
 
+use ::tokio::task::JoinHandle;
 use bftgrid_core::actor::{ActorMsg, AnActorRef, Task, TypedHandler};
 
 pub mod thread;
 pub mod tokio;
+
+#[derive(Debug)]
+pub struct TokioTask<T> {
+    pub value: ::tokio::task::JoinHandle<T>,
+}
+
+impl<T> Task for TokioTask<T>
+where
+    T: Debug + Send,
+{
+    fn is_finished(&self) -> bool {
+        self.value.is_finished()
+    }
+}
 
 /// Offers a unified interface for awaiting both async tasks and thread-blocking tasks
 ///  from any context.
@@ -65,7 +81,7 @@ impl AsyncRuntime {
     /// Blocks the current thread executing the passed future to completion.
     ///  In an async context, this relinquishes an executor thread to then re-enter
     ///  the async context, which is inefficient and should be done sparingly.
-    pub fn await_async<R>(&self, f: impl Future<Output = R>) -> R {
+    pub fn block_on_async<R>(&self, f: impl Future<Output = R>) -> R {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => {
                 log::debug!(
@@ -218,4 +234,25 @@ where
 {
     tasks.retain(|t| !t.is_finished());
     tasks
+}
+
+fn spawn_async_task<T>(
+    tasks: &mut Vec<TokioTask<T>>,
+    runtime: &AsyncRuntime,
+    future: impl std::future::Future<Output = T> + Send + 'static,
+) where
+    T: Send + std::fmt::Debug + 'static,
+{
+    cleanup_complete_tasks(tasks).push(TokioTask {
+        value: runtime.spawn_async(future),
+    });
+}
+
+fn push_async_task<T>(tasks: &mut Vec<TokioTask<T>>, tokio_join_handle: JoinHandle<T>)
+where
+    T: Send + std::fmt::Debug,
+{
+    cleanup_complete_tasks(tasks).push(TokioTask {
+        value: tokio_join_handle,
+    });
 }

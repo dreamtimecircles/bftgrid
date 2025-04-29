@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
+    future::Future,
     io, mem,
     sync::{Arc, Condvar},
     time::Duration,
@@ -18,21 +19,7 @@ use tokio::{
     task::JoinHandle as TokioJoinHandle,
 };
 
-use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime};
-
-#[derive(Debug)]
-struct TokioTask<T> {
-    value: TokioJoinHandle<T>,
-}
-
-impl<T> Task for TokioTask<T>
-where
-    T: Debug + Send,
-{
-    fn is_finished(&self) -> bool {
-        self.value.is_finished()
-    }
-}
+use crate::{notify_close, push_async_task, spawn_async_task, AsyncRuntime, TokioTask};
 
 #[derive(Debug)]
 pub struct TokioActor<MsgT, HandlerT>
@@ -87,7 +74,7 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
-        self.actor_system.spawn_task(async move {
+        self.actor_system.spawn_async_task(async move {
             if let Some(delay_duration) = delay {
                 log::debug!("Delaying send by {:?}", delay_duration);
                 tokio::time::sleep(delay_duration).await;
@@ -121,7 +108,7 @@ where
 #[derive(Clone, Debug)]
 pub struct TokioActorSystem {
     runtime: Arc<AsyncRuntime>,
-    tasks: Arc<std::sync::Mutex<Vec<TokioTask<()>>>>,
+    async_tasks: Arc<std::sync::Mutex<Vec<TokioTask<()>>>>,
 }
 
 impl TokioActorSystem {
@@ -131,14 +118,16 @@ impl TokioActorSystem {
     pub fn new(name: impl Into<String>, tokio: Option<Runtime>) -> Self {
         TokioActorSystem {
             runtime: Arc::new(AsyncRuntime::new(name, tokio)),
-            tasks: Default::default(),
+            async_tasks: Default::default(),
         }
     }
 
-    fn spawn_task(&mut self, future: impl std::future::Future<Output = ()> + Send + 'static) {
-        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(TokioTask {
-            value: self.runtime.spawn_async(future),
-        });
+    fn spawn_async_task(&mut self, future: impl std::future::Future<Output = ()> + Send + 'static) {
+        spawn_async_task(
+            self.async_tasks.lock().unwrap().as_mut(),
+            &self.runtime,
+            future,
+        );
     }
 }
 
@@ -147,7 +136,7 @@ impl Joinable<()> for TokioActorSystem {
         let joiner = async {
             let mut tasks = vec![];
             {
-                let mut locked_tasks = self.tasks.lock().unwrap();
+                let mut locked_tasks = self.async_tasks.lock().unwrap();
                 mem::swap(&mut *locked_tasks, &mut tasks);
                 // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
             }
@@ -162,13 +151,17 @@ impl Joinable<()> for TokioActorSystem {
         };
         // Since we are closing the actor system anyway, it's OK to potentially block
         //  a Tokio thread.
-        self.runtime.await_async(joiner);
+        self.runtime.block_on_async(joiner);
     }
 }
 
 impl Task for TokioActorSystem {
     fn is_finished(&self) -> bool {
-        self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
+        self.async_tasks
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|h| h.is_finished())
     }
 }
 
@@ -196,7 +189,7 @@ impl ActorSystem for TokioActorSystem {
         let actor_name = name.into();
         let actor_node_id = node_id.into();
         let actor_system_name = self.runtime.name.clone();
-        self.spawn_task(async move {
+        self.spawn_async_task(async move {
             let mut current_handler = handler_rx.recv().await.unwrap();
             log::debug!("Async actor '{}' on node '{}' started in tokio actor system '{}'", actor_name, actor_node_id, actor_system_name);
             loop {
@@ -251,19 +244,22 @@ impl ActorSystem for TokioActorSystem {
     }
 
     fn spawn_async_send<MsgT, HandlerT>(
-        &self,
-        f: impl std::prelude::rust_2024::Future<Output = MsgT> + Send + 'static,
+        &mut self,
+        f: impl Future<Output = MsgT> + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        self.runtime.spawn_async_send(f, actor_ref, delay);
+        push_async_task(
+            self.async_tasks.lock().unwrap().as_mut(),
+            self.runtime.spawn_async_send(f, actor_ref, delay),
+        );
     }
 
     fn spawn_thread_blocking_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
@@ -271,7 +267,10 @@ impl ActorSystem for TokioActorSystem {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        self.runtime.spawn_thread_blocking_send(f, actor_ref, delay);
+        push_async_task(
+            self.async_tasks.lock().unwrap().as_mut(),
+            self.runtime.spawn_thread_blocking_send(f, actor_ref, delay),
+        );
     }
 }
 
@@ -380,11 +379,10 @@ impl TokioP2PNetworkClient {
         let runtime = Arc::new(AsyncRuntime::new(name, tokio));
         let runtime_clone = runtime.clone();
         let network_name = runtime.name.clone();
-        // `await_async` is used bind Tokio UDP sockets to peer addresses from any context;
-        //  this is a one-time operation and is quite fast, so it's not expected to incur
-        //  a significant performance penalty.
+        // `block_on_async` is used here to bind Tokio UDP sockets to peer addresses from any
+        //  context, async or thread-blocking. This is a one-time operation and is fast.
         let sockets: HashMap<String, Result<Arc<UdpSocket>, P2PNetworkError>> =
-            runtime.await_async(async {
+            runtime.block_on_async(async {
                 let initial_peer_addrs: Vec<String> =
                     initial_peers.into_iter().map(|p| p.into()).collect(); // Consumed to produce result
                 let initial_peer_addrs_clone = initial_peer_addrs.clone(); // Consumed by `connect`
@@ -467,8 +465,8 @@ where
     }?;
     let serialized_message = serializer(message)?;
     let runtime_name = runtime.name.clone();
-    // `await_async` is used send over async UDP sockets from any context and is expected to be fast.
-    runtime.await_async(async {
+    // `block_on_async` is used send over async UDP sockets from any context and is expected to be fast.
+    runtime.block_on_async(async {
         log::debug!(
             "Async actor network client '{}' starting network send to {}",
             runtime_name,
