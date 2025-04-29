@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["ThreadActor","ThreadActorSystem"]};
+window.SIDEBAR_ITEMS = {"struct":["ThreadActor","ThreadActorData","ThreadActorSystem","ThreadActorSystemHandle"]};

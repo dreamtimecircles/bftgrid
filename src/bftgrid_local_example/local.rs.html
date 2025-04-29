@@ -5,7 +5,7 @@
 <a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>bftgrid_core::actor::{
 <a href=#6 id=6 data-nosnippet>6</a>    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, TypedMsgHandler,
 <a href=#7 id=7 data-nosnippet>7</a>};
-<a href=#8 id=8 data-nosnippet>8</a><span class="kw">use </span>bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
+<a href=#8 id=8 data-nosnippet>8</a><span class="kw">use </span>bftgrid_mt::{thread::ThreadActorSystemHandle, tokio::TokioActorSystemHandle};
 <a href=#9 id=9 data-nosnippet>9</a>
 <a href=#10 id=10 data-nosnippet>10</a><span class="attr">#[derive(Clone, Debug)]
 <a href=#11 id=11 data-nosnippet>11</a></span><span class="kw">struct </span>Ping();
@@ -190,8 +190,8 @@
 <a href=#190 id=190 data-nosnippet>190</a>}
 <a href=#191 id=191 data-nosnippet>191</a>
 <a href=#192 id=192 data-nosnippet>192</a><span class="kw">fn </span>build_system&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt;(
-<a href=#193 id=193 data-nosnippet>193</a>    <span class="kw-2">mut </span>actor1_actor_system: Actor1ActorSystemT,
-<a href=#194 id=194 data-nosnippet>194</a>    <span class="kw-2">mut </span>actor2_actor_system: Actor2ActorSystemT,
+<a href=#193 id=193 data-nosnippet>193</a>    actor1_actor_system: Actor1ActorSystemT,
+<a href=#194 id=194 data-nosnippet>194</a>    actor2_actor_system: Actor2ActorSystemT,
 <a href=#195 id=195 data-nosnippet>195</a>) -&gt; System&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt;
 <a href=#196 id=196 data-nosnippet>196</a><span class="kw">where
 <a href=#197 id=197 data-nosnippet>197</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
@@ -219,45 +219,46 @@
 <a href=#219 id=219 data-nosnippet>219</a></span><span class="attr">#[tokio::main]
 <a href=#220 id=220 data-nosnippet>220</a></span><span class="kw">async fn </span>main() {
 <a href=#221 id=221 data-nosnippet>221</a>    utils::setup_logging(<span class="bool-val">false</span>);
-<a href=#222 id=222 data-nosnippet>222</a>    <span class="kw">let </span>thread_actor_system = ThreadActorSystem::new(<span class="string">"thread-as"</span>, <span class="prelude-val">None</span>);
-<a href=#223 id=223 data-nosnippet>223</a>    <span class="kw">let </span>tokio_actor_system = TokioActorSystem::new(<span class="string">"tokio-as"</span>, <span class="prelude-val">None</span>);
-<a href=#224 id=224 data-nosnippet>224</a>    <span class="kw">let </span>System {
-<a href=#225 id=225 data-nosnippet>225</a>        <span class="kw-2">mut </span>actor1_ref,
-<a href=#226 id=226 data-nosnippet>226</a>        actor2_ref,
-<a href=#227 id=227 data-nosnippet>227</a>        ..
-<a href=#228 id=228 data-nosnippet>228</a>    } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
-<a href=#229 id=229 data-nosnippet>229</a>    actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
-<a href=#230 id=230 data-nosnippet>230</a>    actor2_ref.join();
-<a href=#231 id=231 data-nosnippet>231</a>    <span class="macro">log::info!</span>(<span class="string">"Joined Actor2"</span>);
-<a href=#232 id=232 data-nosnippet>232</a>    actor1_ref.join();
-<a href=#233 id=233 data-nosnippet>233</a>    <span class="macro">log::info!</span>(<span class="string">"Joined Actor1"</span>);
-<a href=#234 id=234 data-nosnippet>234</a>    tokio_actor_system.join();
-<a href=#235 id=235 data-nosnippet>235</a>    thread_actor_system.join();
-<a href=#236 id=236 data-nosnippet>236</a>}
-<a href=#237 id=237 data-nosnippet>237</a>
-<a href=#238 id=238 data-nosnippet>238</a><span class="attr">#[cfg(test)]
-<a href=#239 id=239 data-nosnippet>239</a></span><span class="kw">mod </span>tests {
-<a href=#240 id=240 data-nosnippet>240</a>    <span class="kw">use </span>std::{
-<a href=#241 id=241 data-nosnippet>241</a>        collections::HashMap,
-<a href=#242 id=242 data-nosnippet>242</a>        ops::Add,
-<a href=#243 id=243 data-nosnippet>243</a>        time::{Duration, Instant},
-<a href=#244 id=244 data-nosnippet>244</a>    };
-<a href=#245 id=245 data-nosnippet>245</a>
-<a href=#246 id=246 data-nosnippet>246</a>    <span class="kw">use </span>bftgrid_core::actor::ActorRef;
-<a href=#247 id=247 data-nosnippet>247</a>    <span class="kw">use </span>bftgrid_sim::{NodeDescriptor, Simulation};
-<a href=#248 id=248 data-nosnippet>248</a>
-<a href=#249 id=249 data-nosnippet>249</a>    <span class="kw">use crate</span>::{build_system, utils, Ping, System};
-<a href=#250 id=250 data-nosnippet>250</a>
-<a href=#251 id=251 data-nosnippet>251</a>    <span class="attr">#[test]
-<a href=#252 id=252 data-nosnippet>252</a>    </span><span class="kw">fn </span>simulation() {
-<a href=#253 id=253 data-nosnippet>253</a>        utils::setup_logging(<span class="bool-val">true</span>);
-<a href=#254 id=254 data-nosnippet>254</a>        <span class="kw">let </span><span class="kw-2">mut </span>topology = HashMap::new();
-<a href=#255 id=255 data-nosnippet>255</a>        topology.insert(<span class="string">"node"</span>.into(), NodeDescriptor::default());
-<a href=#256 id=256 data-nosnippet>256</a>        <span class="kw">let </span>start = Instant::now();
-<a href=#257 id=257 data-nosnippet>257</a>        <span class="kw">let </span>simulation = Simulation::new(topology, start, start.add(Duration::from_secs(<span class="number">100</span>)));
-<a href=#258 id=258 data-nosnippet>258</a>        <span class="kw">let </span>System { <span class="kw-2">mut </span>actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
-<a href=#259 id=259 data-nosnippet>259</a>        actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
-<a href=#260 id=260 data-nosnippet>260</a>        <span class="kw">let </span>history = simulation.run();
-<a href=#261 id=261 data-nosnippet>261</a>        <span class="macro">log::info!</span>(<span class="string">"{:?}"</span>, history);
-<a href=#262 id=262 data-nosnippet>262</a>    }
-<a href=#263 id=263 data-nosnippet>263</a>}</code></pre></div></section></main></body></html>
+<a href=#222 id=222 data-nosnippet>222</a>    <span class="kw">let </span><span class="kw-2">mut </span>thread_actor_system =
+<a href=#223 id=223 data-nosnippet>223</a>        ThreadActorSystemHandle::new_actor_system(<span class="string">"thread-as"</span>, <span class="prelude-val">None</span>, <span class="bool-val">false</span>);
+<a href=#224 id=224 data-nosnippet>224</a>    <span class="kw">let </span><span class="kw-2">mut </span>tokio_actor_system = TokioActorSystemHandle::new_actor_system(<span class="string">"tokio-as"</span>, <span class="prelude-val">None</span>, <span class="bool-val">false</span>);
+<a href=#225 id=225 data-nosnippet>225</a>    <span class="kw">let </span>System {
+<a href=#226 id=226 data-nosnippet>226</a>        <span class="kw-2">mut </span>actor1_ref,
+<a href=#227 id=227 data-nosnippet>227</a>        <span class="kw-2">mut </span>actor2_ref,
+<a href=#228 id=228 data-nosnippet>228</a>        ..
+<a href=#229 id=229 data-nosnippet>229</a>    } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
+<a href=#230 id=230 data-nosnippet>230</a>    actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
+<a href=#231 id=231 data-nosnippet>231</a>    actor2_ref.join();
+<a href=#232 id=232 data-nosnippet>232</a>    <span class="macro">log::info!</span>(<span class="string">"Joined Actor2"</span>);
+<a href=#233 id=233 data-nosnippet>233</a>    actor1_ref.join();
+<a href=#234 id=234 data-nosnippet>234</a>    <span class="macro">log::info!</span>(<span class="string">"Joined Actor1"</span>);
+<a href=#235 id=235 data-nosnippet>235</a>    tokio_actor_system.join();
+<a href=#236 id=236 data-nosnippet>236</a>    thread_actor_system.join();
+<a href=#237 id=237 data-nosnippet>237</a>}
+<a href=#238 id=238 data-nosnippet>238</a>
+<a href=#239 id=239 data-nosnippet>239</a><span class="attr">#[cfg(test)]
+<a href=#240 id=240 data-nosnippet>240</a></span><span class="kw">mod </span>tests {
+<a href=#241 id=241 data-nosnippet>241</a>    <span class="kw">use </span>std::{
+<a href=#242 id=242 data-nosnippet>242</a>        collections::HashMap,
+<a href=#243 id=243 data-nosnippet>243</a>        ops::Add,
+<a href=#244 id=244 data-nosnippet>244</a>        time::{Duration, Instant},
+<a href=#245 id=245 data-nosnippet>245</a>    };
+<a href=#246 id=246 data-nosnippet>246</a>
+<a href=#247 id=247 data-nosnippet>247</a>    <span class="kw">use </span>bftgrid_core::actor::ActorRef;
+<a href=#248 id=248 data-nosnippet>248</a>    <span class="kw">use </span>bftgrid_sim::{NodeDescriptor, Simulation};
+<a href=#249 id=249 data-nosnippet>249</a>
+<a href=#250 id=250 data-nosnippet>250</a>    <span class="kw">use crate</span>::{build_system, utils, Ping, System};
+<a href=#251 id=251 data-nosnippet>251</a>
+<a href=#252 id=252 data-nosnippet>252</a>    <span class="attr">#[test]
+<a href=#253 id=253 data-nosnippet>253</a>    </span><span class="kw">fn </span>simulation() {
+<a href=#254 id=254 data-nosnippet>254</a>        utils::setup_logging(<span class="bool-val">true</span>);
+<a href=#255 id=255 data-nosnippet>255</a>        <span class="kw">let </span><span class="kw-2">mut </span>topology = HashMap::new();
+<a href=#256 id=256 data-nosnippet>256</a>        topology.insert(<span class="string">"node"</span>.into(), NodeDescriptor::default());
+<a href=#257 id=257 data-nosnippet>257</a>        <span class="kw">let </span>start = Instant::now();
+<a href=#258 id=258 data-nosnippet>258</a>        <span class="kw">let </span>simulation = Simulation::new(topology, start, start.add(Duration::from_secs(<span class="number">100</span>)));
+<a href=#259 id=259 data-nosnippet>259</a>        <span class="kw">let </span>System { <span class="kw-2">mut </span>actor1_ref, .. } = build_system(simulation.clone(), simulation.clone());
+<a href=#260 id=260 data-nosnippet>260</a>        actor1_ref.send(Ping(), <span class="prelude-val">None</span>);
+<a href=#261 id=261 data-nosnippet>261</a>        <span class="kw">let </span>history = simulation.run();
+<a href=#262 id=262 data-nosnippet>262</a>        <span class="macro">log::info!</span>(<span class="string">"{:?}"</span>, history);
+<a href=#263 id=263 data-nosnippet>263</a>    }
+<a href=#264 id=264 data-nosnippet>264</a>}</code></pre></div></section></main></body></html>

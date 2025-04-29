@@ -5,21 +5,21 @@
 
     // Required methods
     fn <a href="#tymethod.create" class="fn">create</a>&lt;MsgT, MsgHandlerT&gt;(
-        &amp;mut self,
+        &amp;self,
         node_id: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;,
         name: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;,
     ) -&gt; Self::<a class="associatedtype" href="trait.ActorSystemHandle.html#associatedtype.ActorRefT" title="type bftgrid_core::actor::ActorSystemHandle::ActorRefT">ActorRefT</a>&lt;MsgT, MsgHandlerT&gt;
        <span class="where">where MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a>,
              MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt;</span>;
 <span class="item-spacer"></span>    fn <a href="#tymethod.set_handler" class="fn">set_handler</a>&lt;MsgT, MsgHandlerT&gt;(
-        &amp;mut self,
+        &amp;self,
         actor_ref: &amp;mut Self::<a class="associatedtype" href="trait.ActorSystemHandle.html#associatedtype.ActorRefT" title="type bftgrid_core::actor::ActorSystemHandle::ActorRefT">ActorRefT</a>&lt;MsgT, MsgHandlerT&gt;,
         handler: MsgHandlerT,
     )
        <span class="where">where MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a>,
              MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt;</span>;
 <span class="item-spacer"></span>    fn <a href="#tymethod.spawn_async_send" class="fn">spawn_async_send</a>&lt;MsgT, MsgHandlerT&gt;(
-        &amp;mut self,
+        &amp;self,
         f: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = MsgT&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'static,
         actor_ref: <a class="type" href="type.AnActorRef.html" title="type bftgrid_core::actor::AnActorRef">AnActorRef</a>&lt;MsgT, MsgHandlerT&gt;,
         delay: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/core/time/struct.Duration.html" title="struct core::time::Duration">Duration</a>&gt;,
@@ -27,7 +27,7 @@
        <span class="where">where MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a> + 'static,
              MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt; + 'static</span>;
 <span class="item-spacer"></span>    fn <a href="#tymethod.spawn_thread_blocking_send" class="fn">spawn_thread_blocking_send</a>&lt;MsgT, MsgHandlerT&gt;(
-        &amp;mut self,
+        &amp;self,
         f: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/function/trait.FnOnce.html" title="trait core::ops::function::FnOnce">FnOnce</a>() -&gt; MsgT + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'static,
         actor_ref: <a class="type" href="type.AnActorRef.html" title="type bftgrid_core::actor::AnActorRef">AnActorRef</a>&lt;MsgT, MsgHandlerT&gt;,
         delay: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/core/time/struct.Duration.html" title="struct core::time::Duration">Duration</a>&gt;,
@@ -42,26 +42,26 @@ Actors themselves can use <a href="trait.ActorSystemHandle.html" title="trait bf
 <span class="where">where
     MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a>,
     MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt; + 'static</span></h4></section></div><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><section id="tymethod.create" class="method"><a class="src rightside" href="../../src/bftgrid_core/actor.rs.html#123-130">Source</a><h4 class="code-header">fn <a href="#tymethod.create" class="fn">create</a>&lt;MsgT, MsgHandlerT&gt;(
-    &amp;mut self,
+    &amp;self,
     node_id: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;,
     name: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;,
 ) -&gt; Self::<a class="associatedtype" href="trait.ActorSystemHandle.html#associatedtype.ActorRefT" title="type bftgrid_core::actor::ActorSystemHandle::ActorRefT">ActorRefT</a>&lt;MsgT, MsgHandlerT&gt;<div class="where">where
     MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a>,
     MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt;,</div></h4></section><section id="tymethod.set_handler" class="method"><a class="src rightside" href="../../src/bftgrid_core/actor.rs.html#132-138">Source</a><h4 class="code-header">fn <a href="#tymethod.set_handler" class="fn">set_handler</a>&lt;MsgT, MsgHandlerT&gt;(
-    &amp;mut self,
+    &amp;self,
     actor_ref: &amp;mut Self::<a class="associatedtype" href="trait.ActorSystemHandle.html#associatedtype.ActorRefT" title="type bftgrid_core::actor::ActorSystemHandle::ActorRefT">ActorRefT</a>&lt;MsgT, MsgHandlerT&gt;,
     handler: MsgHandlerT,
 )<div class="where">where
     MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a>,
     MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt;,</div></h4></section><section id="tymethod.spawn_async_send" class="method"><a class="src rightside" href="../../src/bftgrid_core/actor.rs.html#140-147">Source</a><h4 class="code-header">fn <a href="#tymethod.spawn_async_send" class="fn">spawn_async_send</a>&lt;MsgT, MsgHandlerT&gt;(
-    &amp;mut self,
+    &amp;self,
     f: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = MsgT&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'static,
     actor_ref: <a class="type" href="type.AnActorRef.html" title="type bftgrid_core::actor::AnActorRef">AnActorRef</a>&lt;MsgT, MsgHandlerT&gt;,
     delay: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/core/time/struct.Duration.html" title="struct core::time::Duration">Duration</a>&gt;,
 )<div class="where">where
     MsgT: <a class="trait" href="trait.ActorMsg.html" title="trait bftgrid_core::actor::ActorMsg">ActorMsg</a> + 'static,
     MsgHandlerT: <a class="trait" href="trait.TypedMsgHandler.html" title="trait bftgrid_core::actor::TypedMsgHandler">TypedMsgHandler</a>&lt;MsgT = MsgT&gt; + 'static,</div></h4></section><section id="tymethod.spawn_thread_blocking_send" class="method"><a class="src rightside" href="../../src/bftgrid_core/actor.rs.html#149-156">Source</a><h4 class="code-header">fn <a href="#tymethod.spawn_thread_blocking_send" class="fn">spawn_thread_blocking_send</a>&lt;MsgT, MsgHandlerT&gt;(
-    &amp;mut self,
+    &amp;self,
     f: impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/function/trait.FnOnce.html" title="trait core::ops::function::FnOnce">FnOnce</a>() -&gt; MsgT + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'static,
     actor_ref: <a class="type" href="type.AnActorRef.html" title="type bftgrid_core::actor::AnActorRef">AnActorRef</a>&lt;MsgT, MsgHandlerT&gt;,
     delay: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/core/time/struct.Duration.html" title="struct core::time::Duration">Duration</a>&gt;,
