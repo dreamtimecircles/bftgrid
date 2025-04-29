@@ -8,8 +8,8 @@ use bftgrid_core::actor::{
 };
 
 use bftgrid_mt::{
-    thread::ThreadActorSystem,
-    tokio::{TokioActorSystem, TokioP2PNetworkClient, TokioP2PNetworkServer},
+    thread::ThreadActorSystemHandle,
+    tokio::{TokioActorSystemHandle, TokioP2PNetworkClient, TokioP2PNetworkServer},
     AsyncRuntime,
 };
 use tokio::net::UdpSocket;
@@ -183,8 +183,9 @@ async fn main() {
     let async_runtime = AsyncRuntime::new("main", None);
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"], None);
     let network2 = TokioP2PNetworkClient::new("network2", vec!["localhost:5001"], None);
-    let mut tokio_actor_system = TokioActorSystem::new("tokio-as", None);
-    let mut thread_actor_system = ThreadActorSystem::new("thread-as", None);
+    let mut tokio_actor_system = TokioActorSystemHandle::new_actor_system("tokio-as", None, false);
+    let mut thread_actor_system =
+        ThreadActorSystemHandle::new_actor_system("thread-as", None, false);
     let mut actor1_ref = tokio_actor_system.create("node1", "actor1");
     let actor1_ref_copy = actor1_ref.new_ref();
     tokio_actor_system.set_handler(
@@ -273,7 +274,7 @@ mod tests {
             NodeDescriptor::new(None::<&str>, Some("actor2")),
         );
         let start = Instant::now();
-        let mut simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
+        let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
         let mut actor1_ref = simulation.create("localhost:5001", "actor1");
         let actor1_ref_copy = actor1_ref.new_ref();
         simulation.set_handler(

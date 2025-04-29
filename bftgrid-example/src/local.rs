@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use bftgrid_core::actor::{
     ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, TypedMsgHandler,
 };
-use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
+use bftgrid_mt::{thread::ThreadActorSystemHandle, tokio::TokioActorSystemHandle};
 
 #[derive(Clone, Debug)]
 struct Ping();
@@ -190,8 +190,8 @@ where
 }
 
 fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
-    mut actor1_actor_system: Actor1ActorSystemT,
-    mut actor2_actor_system: Actor2ActorSystemT,
+    actor1_actor_system: Actor1ActorSystemT,
+    actor2_actor_system: Actor2ActorSystemT,
 ) -> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
@@ -219,11 +219,12 @@ where
 #[tokio::main]
 async fn main() {
     utils::setup_logging(false);
-    let thread_actor_system = ThreadActorSystem::new("thread-as", None);
-    let tokio_actor_system = TokioActorSystem::new("tokio-as", None);
+    let mut thread_actor_system =
+        ThreadActorSystemHandle::new_actor_system("thread-as", None, false);
+    let mut tokio_actor_system = TokioActorSystemHandle::new_actor_system("tokio-as", None, false);
     let System {
         mut actor1_ref,
-        actor2_ref,
+        mut actor2_ref,
         ..
     } = build_system(thread_actor_system.clone(), tokio_actor_system.clone());
     actor1_ref.send(Ping(), None);

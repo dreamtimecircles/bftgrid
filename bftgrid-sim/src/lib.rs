@@ -493,7 +493,7 @@ impl ActorSystemHandle for Simulation {
         SimulatedActor<MsgT, MsgHandlerT>;
 
     fn create<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
     ) -> SimulatedActor<MsgT, MsgHandlerT>
@@ -530,7 +530,7 @@ impl ActorSystemHandle for Simulation {
     }
 
     fn set_handler<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
         handler: MsgHandlerT,
     ) where
@@ -546,7 +546,7 @@ impl ActorSystemHandle for Simulation {
     }
 
     fn spawn_async_send<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         f: impl Future<Output = MsgT> + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
@@ -559,7 +559,7 @@ impl ActorSystemHandle for Simulation {
     }
 
     fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
-        &mut self,
+        &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
