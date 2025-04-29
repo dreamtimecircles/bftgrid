@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["thread","tokio"],"struct":["AsyncRuntime"]};
+window.SIDEBAR_ITEMS = {"mod":["thread","tokio"],"struct":["AsyncRuntime","TokioTask"]};
