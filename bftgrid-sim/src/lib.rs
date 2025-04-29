@@ -546,7 +546,7 @@ impl ActorSystem for Simulation {
     }
 
     fn spawn_async_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
@@ -559,7 +559,7 @@ impl ActorSystem for Simulation {
     }
 
     fn spawn_thread_blocking_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
         mut actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,

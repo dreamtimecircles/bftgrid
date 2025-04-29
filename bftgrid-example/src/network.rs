@@ -200,7 +200,7 @@ async fn main() {
     thread_actor_system.set_handler(&mut actor2_ref, Actor2::new(network2.clone()));
     let node1 = TokioP2PNetworkServer::new(
         "node1",
-        async_runtime.await_async(async {
+        async_runtime.block_on_async(async {
             UdpSocket::bind("localhost:5001")
                 .await
                 .expect("Cannot bind")
@@ -218,7 +218,7 @@ async fn main() {
     log::info!("Started node1");
     let node2 = TokioP2PNetworkServer::new(
         "node2",
-        async_runtime.await_async(async {
+        async_runtime.block_on_async(async {
             UdpSocket::bind("localhost:5002")
                 .await
                 .expect("Cannot bind")

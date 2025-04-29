@@ -138,7 +138,7 @@ pub trait ActorSystem: Clone {
         HandlerT: TypedHandler<MsgT = MsgT>;
 
     fn spawn_async_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
@@ -147,7 +147,7 @@ pub trait ActorSystem: Clone {
         HandlerT: TypedHandler<MsgT = MsgT> + 'static;
 
     fn spawn_thread_blocking_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,

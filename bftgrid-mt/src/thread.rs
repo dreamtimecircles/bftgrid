@@ -15,7 +15,7 @@ use bftgrid_core::actor::{
 };
 use tokio::runtime::Runtime;
 
-use crate::{cleanup_complete_tasks, notify_close, AsyncRuntime};
+use crate::{cleanup_complete_tasks, notify_close, push_async_task, AsyncRuntime, TokioTask};
 
 #[derive(Debug)]
 struct ThreadJoinable<T> {
@@ -85,7 +85,7 @@ where
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.tx.clone();
         if let Some(delay_duration) = delay {
-            self.actor_system.spawn_task(move || {
+            self.actor_system.spawn_thread_blocking_task(move || {
                 log::debug!("Delaying send by {:?}", delay_duration);
                 thread::sleep(delay_duration);
                 checked_send(sender, message);
@@ -120,8 +120,9 @@ where
 
 #[derive(Clone, Debug)]
 pub struct ThreadActorSystem {
-    runtime: Arc<AsyncRuntime>,
-    tasks: Arc<Mutex<Vec<ThreadJoinable<()>>>>,
+    async_runtime: Arc<AsyncRuntime>,
+    thread_blocking_tasks: Arc<Mutex<Vec<ThreadJoinable<()>>>>,
+    async_tasks: Arc<Mutex<Vec<TokioTask<()>>>>,
 }
 
 impl ThreadActorSystem {
@@ -130,38 +131,58 @@ impl ThreadActorSystem {
     ///  CPU-based thread pool size and all features enabled.
     pub fn new(name: impl Into<String>, tokio: Option<Runtime>) -> Self {
         ThreadActorSystem {
-            runtime: Arc::new(AsyncRuntime::new(name, tokio)),
-            tasks: Default::default(),
+            async_runtime: Arc::new(AsyncRuntime::new(name, tokio)),
+            thread_blocking_tasks: Default::default(),
+            async_tasks: Default::default(),
         }
     }
 
-    fn spawn_task(&mut self, f: impl FnOnce() + Send + 'static) {
-        cleanup_complete_tasks(self.tasks.lock().unwrap().as_mut()).push(ThreadJoinable {
-            value: thread::spawn(f),
-        });
+    fn spawn_thread_blocking_task(&mut self, f: impl FnOnce() + Send + 'static) {
+        cleanup_complete_tasks(self.thread_blocking_tasks.lock().unwrap().as_mut()).push(
+            ThreadJoinable {
+                value: thread::spawn(f),
+            },
+        );
+    }
+
+    fn join_tasks(&mut self) {
+        let mut locked_thread_blocking_tasks = self.thread_blocking_tasks.lock().unwrap();
+        let thread_blocking_tasks = mem::take(&mut *locked_thread_blocking_tasks);
+        // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        drop(locked_thread_blocking_tasks);
+        let mut locked_async_tasks = self.async_tasks.lock().unwrap();
+        let async_tasks = mem::take(&mut *locked_async_tasks);
+        // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
+        drop(locked_async_tasks);
+        log::debug!(
+            "Thread actor system '{}' joining {} thread blocking tasks and {} async tasks",
+            self.async_runtime.name,
+            thread_blocking_tasks.len(),
+            async_tasks.len(),
+        );
+        for t in thread_blocking_tasks {
+            t.join();
+        }
+        for t in async_tasks {
+            self.async_runtime
+                .block_on_async(async move { t.value.await.unwrap() });
+        }
     }
 }
 
 impl Task for ThreadActorSystem {
     fn is_finished(&self) -> bool {
-        self.tasks.lock().unwrap().iter().all(|h| h.is_finished())
+        self.thread_blocking_tasks
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|h| h.is_finished())
     }
 }
 
 impl Joinable<()> for ThreadActorSystem {
-    fn join(self) {
-        let mut locked_tasks = self.tasks.lock().unwrap();
-        let tasks = mem::take(&mut *locked_tasks);
-        // Drop the lock before waiting for all tasks to finish, else the actor system will deadlock on spawns
-        drop(locked_tasks);
-        log::info!(
-            "Thread actor system '{}' joining {} tasks",
-            self.runtime.name,
-            tasks.len()
-        );
-        for t in tasks {
-            t.join();
-        }
+    fn join(mut self) {
+        self.join_tasks();
     }
 }
 
@@ -187,8 +208,8 @@ impl ActorSystem for ThreadActorSystem {
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
         let actor_node_id = node_id.into();
-        let actor_system_name = self.runtime.name.clone();
-        self.spawn_task(move || {
+        let actor_system_name = self.async_runtime.name.clone();
+        self.spawn_thread_blocking_task(move || {
             let mut current_handler = handler_rx.recv().unwrap();
             log::debug!("Started actor '{}' on node '{}' in thread actor system '{}'", actor_name, actor_node_id, actor_system_name);
             loop {
@@ -239,7 +260,7 @@ impl ActorSystem for ThreadActorSystem {
     }
 
     fn spawn_async_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
@@ -247,11 +268,14 @@ impl ActorSystem for ThreadActorSystem {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        self.runtime.spawn_async_send(f, actor_ref, delay);
+        push_async_task(
+            self.async_tasks.lock().unwrap().as_mut(),
+            self.async_runtime.spawn_async_send(f, actor_ref, delay),
+        );
     }
 
     fn spawn_thread_blocking_send<MsgT, HandlerT>(
-        &self,
+        &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
         actor_ref: AnActorRef<MsgT, HandlerT>,
         delay: Option<Duration>,
@@ -259,6 +283,10 @@ impl ActorSystem for ThreadActorSystem {
         MsgT: ActorMsg + 'static,
         HandlerT: TypedHandler<MsgT = MsgT> + 'static,
     {
-        self.runtime.spawn_thread_blocking_send(f, actor_ref, delay);
+        push_async_task(
+            self.async_tasks.lock().unwrap().as_mut(),
+            self.async_runtime
+                .spawn_thread_blocking_send(f, actor_ref, delay),
+        );
     }
 }
