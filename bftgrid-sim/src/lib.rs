@@ -12,8 +12,8 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, P2PNetworkClient, P2PNetworkResult,
-    TypedHandler, UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, P2PNetworkClient,
+    P2PNetworkResult, TypedMsgHandler, UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -118,17 +118,17 @@ impl Default for NodeDescriptor {
 
 type Topology = HashMap<String, NodeDescriptor>;
 
-pub struct SimulatedActor<MsgT, HandlerT> {
+pub struct SimulatedActor<MsgT, MsgHandlerT> {
     topology: Arc<Mutex<Topology>>,
     node_id: Arc<String>,
     name: Arc<String>,
     handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
     events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
     message_type: PhantomData<MsgT>,
-    handler_type: PhantomData<HandlerT>,
+    handler_type: PhantomData<MsgHandlerT>,
 }
 
-impl<MsgT, HandlerT> std::fmt::Debug for SimulatedActor<MsgT, HandlerT> {
+impl<MsgT, MsgHandlerT> std::fmt::Debug for SimulatedActor<MsgT, MsgHandlerT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SimulatedActor")
             .field("node_id", &self.node_id)
@@ -137,10 +137,10 @@ impl<MsgT, HandlerT> std::fmt::Debug for SimulatedActor<MsgT, HandlerT> {
     }
 }
 
-impl<MsgT, HandlerT> ActorRef<MsgT, HandlerT> for SimulatedActor<MsgT, HandlerT>
+impl<MsgT, MsgHandlerT> ActorRef<MsgT, MsgHandlerT> for SimulatedActor<MsgT, MsgHandlerT>
 where
     MsgT: ActorMsg,
-    HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         self.events_buffer.lock().unwrap().push(InternalEvent {
@@ -151,7 +151,7 @@ where
         });
     }
 
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, HandlerT>> {
+    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, MsgHandlerT>> {
         Box::new(SimulatedActor {
             topology: self.topology.clone(),
             node_id: self.node_id.clone(),
@@ -488,18 +488,18 @@ impl std::fmt::Debug for Simulation {
     }
 }
 
-impl ActorSystem for Simulation {
-    type ActorRefT<MsgT: ActorMsg, HandlerT: TypedHandler<MsgT = MsgT> + 'static> =
-        SimulatedActor<MsgT, HandlerT>;
+impl ActorSystemHandle for Simulation {
+    type ActorRefT<MsgT: ActorMsg, MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static> =
+        SimulatedActor<MsgT, MsgHandlerT>;
 
-    fn create<MsgT, HandlerT>(
+    fn create<MsgT, MsgHandlerT>(
         &mut self,
         node_id: impl Into<String>,
         name: impl Into<String>,
-    ) -> SimulatedActor<MsgT, HandlerT>
+    ) -> SimulatedActor<MsgT, MsgHandlerT>
     where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let node_id_string = node_id.into();
         let name_string = name.into();
@@ -529,13 +529,13 @@ impl ActorSystem for Simulation {
         }
     }
 
-    fn set_handler<MsgT, HandlerT>(
+    fn set_handler<MsgT, MsgHandlerT>(
         &mut self,
-        actor_ref: &mut Self::ActorRefT<MsgT, HandlerT>,
-        handler: HandlerT,
+        actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
+        handler: MsgHandlerT,
     ) where
         MsgT: ActorMsg,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let mut topology = self.topology.lock().unwrap();
         let node = topology.get_mut(actor_ref.node_id.as_ref()).unwrap();
@@ -545,27 +545,27 @@ impl ActorSystem for Simulation {
         );
     }
 
-    fn spawn_async_send<MsgT, HandlerT>(
+    fn spawn_async_send<MsgT, MsgHandlerT>(
         &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, HandlerT>,
+        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let res = self.tokio_runtime.block_on(f);
         actor_ref.send(res, delay);
     }
 
-    fn spawn_thread_blocking_send<MsgT, HandlerT>(
+    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
         &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, HandlerT>,
+        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        HandlerT: TypedHandler<MsgT = MsgT> + 'static,
+        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         actor_ref.send(f(), delay);
     }

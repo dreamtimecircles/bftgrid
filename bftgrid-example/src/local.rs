@@ -3,7 +3,7 @@ mod utils;
 use std::marker::PhantomData;
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, TypedMsgHandler,
 };
 use bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 
@@ -14,20 +14,20 @@ impl ActorMsg for Ping {}
 #[derive(Clone, Debug)]
 struct Actor1ToActor2<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
+    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
 {
     pub actor1_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
 }
 
 impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
-    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static
+    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static
 {
 }
 
 #[derive(Debug)]
 struct Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
+    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
 {
     self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
     node_id: String,
@@ -39,7 +39,7 @@ where
 
 impl<ActorSystemT> Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + std::fmt::Debug + Send,
+    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send,
 {
     fn new(
         self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
@@ -61,14 +61,14 @@ where
 #[derive(Debug)]
 struct Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem,
+    Actor1ActorSystemT: ActorSystemHandle,
 {
     actor_system_type: PhantomData<Actor1ActorSystemT>,
 }
 
 impl<Actor1ActorSystemT> Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem,
+    Actor1ActorSystemT: ActorSystemHandle,
 {
     fn new() -> Self {
         Actor2 {
@@ -77,9 +77,9 @@ where
     }
 }
 
-impl<Actor1ActorSystemT> TypedHandler for Actor2<Actor1ActorSystemT>
+impl<Actor1ActorSystemT> TypedMsgHandler for Actor2<Actor1ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
+    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
 {
     type MsgT = Actor1ToActor2<Actor1ActorSystemT>;
 
@@ -91,9 +91,9 @@ where
     }
 }
 
-impl<ActorSystemT> TypedHandler for Actor1<ActorSystemT>
+impl<ActorSystemT> TypedMsgHandler for Actor1<ActorSystemT>
 where
-    ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
+    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
 {
     type MsgT = Ping;
 
@@ -158,8 +158,8 @@ where
 
 struct System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
-    Actor2ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
     actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
     actor2_ref: Actor2ActorSystemT::ActorRefT<
@@ -171,8 +171,8 @@ where
 
 impl<Actor1ActorSystemT, Actor2ActorSystemT> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
-    Actor2ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
     fn new(
         actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
@@ -194,8 +194,8 @@ fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
     mut actor2_actor_system: Actor2ActorSystemT,
 ) -> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + 'static,
-    Actor2ActorSystemT: ActorSystem + 'static,
+    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
     let mut actor1_ref = actor1_actor_system.create("node", "actor1");
     let actor1_ref_copy = actor1_ref.new_ref();

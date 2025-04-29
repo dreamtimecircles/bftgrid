@@ -3,8 +3,8 @@ mod utils;
 use std::any::Any;
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorMsg, AnActorRef, Joinable,
-    MessageNotSupported, P2PNetworkClient, TypedHandler, UntypedHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, AnActorRef, Joinable,
+    MessageNotSupported, P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
 };
 
 use bftgrid_mt::{
@@ -21,7 +21,7 @@ impl ActorMsg for Ping {}
 #[derive(Debug)]
 struct Actor1<ActorSystemT, P2PNetworkT>
 where
-    ActorSystemT: ActorSystem + 'static,
+    ActorSystemT: ActorSystemHandle + 'static,
     P2PNetworkT: P2PNetworkClient,
 {
     self_ref: AnActorRef<Ping, Actor1<ActorSystemT, P2PNetworkT>>,
@@ -34,7 +34,7 @@ where
 
 impl<ActorSystemT, P2PNetworkT> Actor1<ActorSystemT, P2PNetworkT>
 where
-    ActorSystemT: ActorSystem,
+    ActorSystemT: ActorSystemHandle,
     P2PNetworkT: P2PNetworkClient,
 {
     fn new(
@@ -54,9 +54,9 @@ where
     }
 }
 
-impl<ActorSystemT, P2PNetworkT> TypedHandler for Actor1<ActorSystemT, P2PNetworkT>
+impl<ActorSystemT, P2PNetworkT> TypedMsgHandler for Actor1<ActorSystemT, P2PNetworkT>
 where
-    ActorSystemT: ActorSystem + Send + std::fmt::Debug + 'static,
+    ActorSystemT: ActorSystemHandle + Send + std::fmt::Debug + 'static,
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
 {
     type MsgT = Ping;
@@ -134,7 +134,7 @@ where
     }
 }
 
-impl<P2PNetworkT> TypedHandler for Actor2<P2PNetworkT>
+impl<P2PNetworkT> TypedMsgHandler for Actor2<P2PNetworkT>
 where
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
 {
@@ -150,16 +150,16 @@ where
 }
 
 #[derive(Debug)]
-struct NodeP2PNetworkInputHandler<HandlerT>
+struct NodeP2PNetworkInputHandler<MsgHandlerT>
 where
-    HandlerT: TypedHandler<MsgT = Ping> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = Ping> + 'static,
 {
-    actor_ref: AnActorRef<Ping, HandlerT>,
+    actor_ref: AnActorRef<Ping, MsgHandlerT>,
 }
 
-impl<HandlerT> UntypedHandler for NodeP2PNetworkInputHandler<HandlerT>
+impl<MsgHandlerT> UntypedMsgHandler for NodeP2PNetworkInputHandler<MsgHandlerT>
 where
-    HandlerT: TypedHandler<MsgT = Ping> + 'static,
+    MsgHandlerT: TypedMsgHandler<MsgT = Ping> + 'static,
 {
     fn receive_untyped(
         &mut self,
@@ -255,7 +255,7 @@ mod tests {
     };
 
     use crate::utils;
-    use bftgrid_core::actor::ActorSystem;
+    use bftgrid_core::actor::ActorSystemHandle;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
     use crate::{Actor1, Actor2, ActorRef, Ping};
