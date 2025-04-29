@@ -5,9 +5,9 @@
 ) -&gt; Self</h4></section></summary><div class="docblock"><p>Owns the passed runtime, using it only if no contextual handle is available;
 if <code>None</code> is passed, it creates a runtime with multi-threaded support,
 CPU-based thread pool size and all features enabled.</p>
-</div></details><section id="method.start" class="method"><a class="src rightside" href="../../src/bftgrid_mt/tokio.rs.html#293-361">Source</a><h4 class="code-header">pub fn <a href="#method.start" class="fn">start</a>&lt;UntypedHandlerT: <a class="trait" href="../../bftgrid_core/actor/trait.UntypedHandler.html" title="trait bftgrid_core::actor::UntypedHandler">UntypedHandler</a> + 'static, MsgT, DeT&gt;(
+</div></details><section id="method.start" class="method"><a class="src rightside" href="../../src/bftgrid_mt/tokio.rs.html#293-361">Source</a><h4 class="code-header">pub fn <a href="#method.start" class="fn">start</a>&lt;UntypedMsgHandlerT: <a class="trait" href="../../bftgrid_core/actor/trait.UntypedMsgHandler.html" title="trait bftgrid_core::actor::UntypedMsgHandler">UntypedMsgHandler</a> + 'static, MsgT, DeT&gt;(
     &amp;self,
-    handler: UntypedHandlerT,
+    handler: UntypedMsgHandlerT,
     deserializer: DeT,
     buffer_size: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>,
 ) -&gt; <a class="type" href="https://doc.rust-lang.org/nightly/std/io/error/type.Result.html" title="type std::io::error::Result">Result</a>&lt;<a class="struct" href="../../tokio/runtime/task/join/struct.JoinHandle.html" title="struct tokio::runtime::task::join::JoinHandle">TokioJoinHandle</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.unit.html">()</a>&gt;&gt;<div class="where">where

@@ -3,7 +3,7 @@
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>std::marker::PhantomData;
 <a href=#4 id=4 data-nosnippet>4</a>
 <a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>bftgrid_core::actor::{
-<a href=#6 id=6 data-nosnippet>6</a>    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorRef, Joinable, TypedHandler,
+<a href=#6 id=6 data-nosnippet>6</a>    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, TypedMsgHandler,
 <a href=#7 id=7 data-nosnippet>7</a>};
 <a href=#8 id=8 data-nosnippet>8</a><span class="kw">use </span>bftgrid_mt::{thread::ThreadActorSystem, tokio::TokioActorSystem};
 <a href=#9 id=9 data-nosnippet>9</a>
@@ -14,20 +14,20 @@
 <a href=#14 id=14 data-nosnippet>14</a><span class="attr">#[derive(Clone, Debug)]
 <a href=#15 id=15 data-nosnippet>15</a></span><span class="kw">struct </span>Actor1ToActor2&lt;ActorSystemT&gt;
 <a href=#16 id=16 data-nosnippet>16</a><span class="kw">where
-<a href=#17 id=17 data-nosnippet>17</a>    </span>ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#17 id=17 data-nosnippet>17</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
 <a href=#18 id=18 data-nosnippet>18</a>{
 <a href=#19 id=19 data-nosnippet>19</a>    <span class="kw">pub </span>actor1_ref: AnActorRef&lt;Ping, Actor1&lt;ActorSystemT&gt;&gt;,
 <a href=#20 id=20 data-nosnippet>20</a>}
 <a href=#21 id=21 data-nosnippet>21</a>
 <a href=#22 id=22 data-nosnippet>22</a><span class="kw">impl</span>&lt;ActorSystemT&gt; ActorMsg <span class="kw">for </span>Actor1ToActor2&lt;ActorSystemT&gt; <span class="kw">where
-<a href=#23 id=23 data-nosnippet>23</a>    </span>ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static
+<a href=#23 id=23 data-nosnippet>23</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static
 <a href=#24 id=24 data-nosnippet>24</a></span>{
 <a href=#25 id=25 data-nosnippet>25</a>}
 <a href=#26 id=26 data-nosnippet>26</a>
 <a href=#27 id=27 data-nosnippet>27</a><span class="attr">#[derive(Debug)]
 <a href=#28 id=28 data-nosnippet>28</a></span><span class="kw">struct </span>Actor1&lt;ActorSystemT&gt;
 <a href=#29 id=29 data-nosnippet>29</a><span class="kw">where
-<a href=#30 id=30 data-nosnippet>30</a>    </span>ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#30 id=30 data-nosnippet>30</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
 <a href=#31 id=31 data-nosnippet>31</a>{
 <a href=#32 id=32 data-nosnippet>32</a>    self_ref: AnActorRef&lt;Ping, Actor1&lt;ActorSystemT&gt;&gt;,
 <a href=#33 id=33 data-nosnippet>33</a>    node_id: String,
@@ -39,7 +39,7 @@
 <a href=#39 id=39 data-nosnippet>39</a>
 <a href=#40 id=40 data-nosnippet>40</a><span class="kw">impl</span>&lt;ActorSystemT&gt; Actor1&lt;ActorSystemT&gt;
 <a href=#41 id=41 data-nosnippet>41</a><span class="kw">where
-<a href=#42 id=42 data-nosnippet>42</a>    </span>ActorSystemT: ActorSystem + std::fmt::Debug + Send,
+<a href=#42 id=42 data-nosnippet>42</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send,
 <a href=#43 id=43 data-nosnippet>43</a>{
 <a href=#44 id=44 data-nosnippet>44</a>    <span class="kw">fn </span>new(
 <a href=#45 id=45 data-nosnippet>45</a>        self_ref: AnActorRef&lt;Ping, Actor1&lt;ActorSystemT&gt;&gt;,
@@ -61,14 +61,14 @@
 <a href=#61 id=61 data-nosnippet>61</a><span class="attr">#[derive(Debug)]
 <a href=#62 id=62 data-nosnippet>62</a></span><span class="kw">struct </span>Actor2&lt;Actor1ActorSystemT&gt;
 <a href=#63 id=63 data-nosnippet>63</a><span class="kw">where
-<a href=#64 id=64 data-nosnippet>64</a>    </span>Actor1ActorSystemT: ActorSystem,
+<a href=#64 id=64 data-nosnippet>64</a>    </span>Actor1ActorSystemT: ActorSystemHandle,
 <a href=#65 id=65 data-nosnippet>65</a>{
 <a href=#66 id=66 data-nosnippet>66</a>    actor_system_type: PhantomData&lt;Actor1ActorSystemT&gt;,
 <a href=#67 id=67 data-nosnippet>67</a>}
 <a href=#68 id=68 data-nosnippet>68</a>
 <a href=#69 id=69 data-nosnippet>69</a><span class="kw">impl</span>&lt;Actor1ActorSystemT&gt; Actor2&lt;Actor1ActorSystemT&gt;
 <a href=#70 id=70 data-nosnippet>70</a><span class="kw">where
-<a href=#71 id=71 data-nosnippet>71</a>    </span>Actor1ActorSystemT: ActorSystem,
+<a href=#71 id=71 data-nosnippet>71</a>    </span>Actor1ActorSystemT: ActorSystemHandle,
 <a href=#72 id=72 data-nosnippet>72</a>{
 <a href=#73 id=73 data-nosnippet>73</a>    <span class="kw">fn </span>new() -&gt; <span class="self">Self </span>{
 <a href=#74 id=74 data-nosnippet>74</a>        Actor2 {
@@ -77,9 +77,9 @@
 <a href=#77 id=77 data-nosnippet>77</a>    }
 <a href=#78 id=78 data-nosnippet>78</a>}
 <a href=#79 id=79 data-nosnippet>79</a>
-<a href=#80 id=80 data-nosnippet>80</a><span class="kw">impl</span>&lt;Actor1ActorSystemT&gt; TypedHandler <span class="kw">for </span>Actor2&lt;Actor1ActorSystemT&gt;
+<a href=#80 id=80 data-nosnippet>80</a><span class="kw">impl</span>&lt;Actor1ActorSystemT&gt; TypedMsgHandler <span class="kw">for </span>Actor2&lt;Actor1ActorSystemT&gt;
 <a href=#81 id=81 data-nosnippet>81</a><span class="kw">where
-<a href=#82 id=82 data-nosnippet>82</a>    </span>Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#82 id=82 data-nosnippet>82</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
 <a href=#83 id=83 data-nosnippet>83</a>{
 <a href=#84 id=84 data-nosnippet>84</a>    <span class="kw">type </span>MsgT = Actor1ToActor2&lt;Actor1ActorSystemT&gt;;
 <a href=#85 id=85 data-nosnippet>85</a>
@@ -91,9 +91,9 @@
 <a href=#91 id=91 data-nosnippet>91</a>    }
 <a href=#92 id=92 data-nosnippet>92</a>}
 <a href=#93 id=93 data-nosnippet>93</a>
-<a href=#94 id=94 data-nosnippet>94</a><span class="kw">impl</span>&lt;ActorSystemT&gt; TypedHandler <span class="kw">for </span>Actor1&lt;ActorSystemT&gt;
+<a href=#94 id=94 data-nosnippet>94</a><span class="kw">impl</span>&lt;ActorSystemT&gt; TypedMsgHandler <span class="kw">for </span>Actor1&lt;ActorSystemT&gt;
 <a href=#95 id=95 data-nosnippet>95</a><span class="kw">where
-<a href=#96 id=96 data-nosnippet>96</a>    </span>ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#96 id=96 data-nosnippet>96</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
 <a href=#97 id=97 data-nosnippet>97</a>{
 <a href=#98 id=98 data-nosnippet>98</a>    <span class="kw">type </span>MsgT = Ping;
 <a href=#99 id=99 data-nosnippet>99</a>
@@ -158,8 +158,8 @@
 <a href=#158 id=158 data-nosnippet>158</a>
 <a href=#159 id=159 data-nosnippet>159</a><span class="kw">struct </span>System&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt;
 <a href=#160 id=160 data-nosnippet>160</a><span class="kw">where
-<a href=#161 id=161 data-nosnippet>161</a>    </span>Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
-<a href=#162 id=162 data-nosnippet>162</a>    Actor2ActorSystemT: ActorSystem + <span class="lifetime">'static</span>,
+<a href=#161 id=161 data-nosnippet>161</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#162 id=162 data-nosnippet>162</a>    Actor2ActorSystemT: ActorSystemHandle + <span class="lifetime">'static</span>,
 <a href=#163 id=163 data-nosnippet>163</a>{
 <a href=#164 id=164 data-nosnippet>164</a>    actor1_ref: Actor1ActorSystemT::ActorRefT&lt;Ping, Actor1&lt;Actor1ActorSystemT&gt;&gt;,
 <a href=#165 id=165 data-nosnippet>165</a>    actor2_ref: Actor2ActorSystemT::ActorRefT&lt;
@@ -171,8 +171,8 @@
 <a href=#171 id=171 data-nosnippet>171</a>
 <a href=#172 id=172 data-nosnippet>172</a><span class="kw">impl</span>&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt; System&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt;
 <a href=#173 id=173 data-nosnippet>173</a><span class="kw">where
-<a href=#174 id=174 data-nosnippet>174</a>    </span>Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
-<a href=#175 id=175 data-nosnippet>175</a>    Actor2ActorSystemT: ActorSystem + <span class="lifetime">'static</span>,
+<a href=#174 id=174 data-nosnippet>174</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#175 id=175 data-nosnippet>175</a>    Actor2ActorSystemT: ActorSystemHandle + <span class="lifetime">'static</span>,
 <a href=#176 id=176 data-nosnippet>176</a>{
 <a href=#177 id=177 data-nosnippet>177</a>    <span class="kw">fn </span>new(
 <a href=#178 id=178 data-nosnippet>178</a>        actor1_ref: Actor1ActorSystemT::ActorRefT&lt;Ping, Actor1&lt;Actor1ActorSystemT&gt;&gt;,
@@ -194,8 +194,8 @@
 <a href=#194 id=194 data-nosnippet>194</a>    <span class="kw-2">mut </span>actor2_actor_system: Actor2ActorSystemT,
 <a href=#195 id=195 data-nosnippet>195</a>) -&gt; System&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt;
 <a href=#196 id=196 data-nosnippet>196</a><span class="kw">where
-<a href=#197 id=197 data-nosnippet>197</a>    </span>Actor1ActorSystemT: ActorSystem + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
-<a href=#198 id=198 data-nosnippet>198</a>    Actor2ActorSystemT: ActorSystem + <span class="lifetime">'static</span>,
+<a href=#197 id=197 data-nosnippet>197</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#198 id=198 data-nosnippet>198</a>    Actor2ActorSystemT: ActorSystemHandle + <span class="lifetime">'static</span>,
 <a href=#199 id=199 data-nosnippet>199</a>{
 <a href=#200 id=200 data-nosnippet>200</a>    <span class="kw">let </span><span class="kw-2">mut </span>actor1_ref = actor1_actor_system.create(<span class="string">"node"</span>, <span class="string">"actor1"</span>);
 <a href=#201 id=201 data-nosnippet>201</a>    <span class="kw">let </span>actor1_ref_copy = actor1_ref.new_ref();

@@ -3,8 +3,8 @@
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>std::any::Any;
 <a href=#4 id=4 data-nosnippet>4</a>
 <a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>bftgrid_core::actor::{
-<a href=#6 id=6 data-nosnippet>6</a>    ActorControl, ActorMsg, ActorRef, ActorSystem, AnActorMsg, AnActorRef, Joinable,
-<a href=#7 id=7 data-nosnippet>7</a>    MessageNotSupported, P2PNetworkClient, TypedHandler, UntypedHandler,
+<a href=#6 id=6 data-nosnippet>6</a>    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, AnActorRef, Joinable,
+<a href=#7 id=7 data-nosnippet>7</a>    MessageNotSupported, P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
 <a href=#8 id=8 data-nosnippet>8</a>};
 <a href=#9 id=9 data-nosnippet>9</a>
 <a href=#10 id=10 data-nosnippet>10</a><span class="kw">use </span>bftgrid_mt::{
@@ -21,7 +21,7 @@
 <a href=#21 id=21 data-nosnippet>21</a><span class="attr">#[derive(Debug)]
 <a href=#22 id=22 data-nosnippet>22</a></span><span class="kw">struct </span>Actor1&lt;ActorSystemT, P2PNetworkT&gt;
 <a href=#23 id=23 data-nosnippet>23</a><span class="kw">where
-<a href=#24 id=24 data-nosnippet>24</a>    </span>ActorSystemT: ActorSystem + <span class="lifetime">'static</span>,
+<a href=#24 id=24 data-nosnippet>24</a>    </span>ActorSystemT: ActorSystemHandle + <span class="lifetime">'static</span>,
 <a href=#25 id=25 data-nosnippet>25</a>    P2PNetworkT: P2PNetworkClient,
 <a href=#26 id=26 data-nosnippet>26</a>{
 <a href=#27 id=27 data-nosnippet>27</a>    self_ref: AnActorRef&lt;Ping, Actor1&lt;ActorSystemT, P2PNetworkT&gt;&gt;,
@@ -34,7 +34,7 @@
 <a href=#34 id=34 data-nosnippet>34</a>
 <a href=#35 id=35 data-nosnippet>35</a><span class="kw">impl</span>&lt;ActorSystemT, P2PNetworkT&gt; Actor1&lt;ActorSystemT, P2PNetworkT&gt;
 <a href=#36 id=36 data-nosnippet>36</a><span class="kw">where
-<a href=#37 id=37 data-nosnippet>37</a>    </span>ActorSystemT: ActorSystem,
+<a href=#37 id=37 data-nosnippet>37</a>    </span>ActorSystemT: ActorSystemHandle,
 <a href=#38 id=38 data-nosnippet>38</a>    P2PNetworkT: P2PNetworkClient,
 <a href=#39 id=39 data-nosnippet>39</a>{
 <a href=#40 id=40 data-nosnippet>40</a>    <span class="kw">fn </span>new(
@@ -54,9 +54,9 @@
 <a href=#54 id=54 data-nosnippet>54</a>    }
 <a href=#55 id=55 data-nosnippet>55</a>}
 <a href=#56 id=56 data-nosnippet>56</a>
-<a href=#57 id=57 data-nosnippet>57</a><span class="kw">impl</span>&lt;ActorSystemT, P2PNetworkT&gt; TypedHandler <span class="kw">for </span>Actor1&lt;ActorSystemT, P2PNetworkT&gt;
+<a href=#57 id=57 data-nosnippet>57</a><span class="kw">impl</span>&lt;ActorSystemT, P2PNetworkT&gt; TypedMsgHandler <span class="kw">for </span>Actor1&lt;ActorSystemT, P2PNetworkT&gt;
 <a href=#58 id=58 data-nosnippet>58</a><span class="kw">where
-<a href=#59 id=59 data-nosnippet>59</a>    </span>ActorSystemT: ActorSystem + Send + std::fmt::Debug + <span class="lifetime">'static</span>,
+<a href=#59 id=59 data-nosnippet>59</a>    </span>ActorSystemT: ActorSystemHandle + Send + std::fmt::Debug + <span class="lifetime">'static</span>,
 <a href=#60 id=60 data-nosnippet>60</a>    P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + <span class="lifetime">'static</span>,
 <a href=#61 id=61 data-nosnippet>61</a>{
 <a href=#62 id=62 data-nosnippet>62</a>    <span class="kw">type </span>MsgT = Ping;
@@ -134,7 +134,7 @@
 <a href=#134 id=134 data-nosnippet>134</a>    }
 <a href=#135 id=135 data-nosnippet>135</a>}
 <a href=#136 id=136 data-nosnippet>136</a>
-<a href=#137 id=137 data-nosnippet>137</a><span class="kw">impl</span>&lt;P2PNetworkT&gt; TypedHandler <span class="kw">for </span>Actor2&lt;P2PNetworkT&gt;
+<a href=#137 id=137 data-nosnippet>137</a><span class="kw">impl</span>&lt;P2PNetworkT&gt; TypedMsgHandler <span class="kw">for </span>Actor2&lt;P2PNetworkT&gt;
 <a href=#138 id=138 data-nosnippet>138</a><span class="kw">where
 <a href=#139 id=139 data-nosnippet>139</a>    </span>P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + <span class="lifetime">'static</span>,
 <a href=#140 id=140 data-nosnippet>140</a>{
@@ -150,16 +150,16 @@
 <a href=#150 id=150 data-nosnippet>150</a>}
 <a href=#151 id=151 data-nosnippet>151</a>
 <a href=#152 id=152 data-nosnippet>152</a><span class="attr">#[derive(Debug)]
-<a href=#153 id=153 data-nosnippet>153</a></span><span class="kw">struct </span>NodeP2PNetworkInputHandler&lt;HandlerT&gt;
+<a href=#153 id=153 data-nosnippet>153</a></span><span class="kw">struct </span>NodeP2PNetworkInputHandler&lt;MsgHandlerT&gt;
 <a href=#154 id=154 data-nosnippet>154</a><span class="kw">where
-<a href=#155 id=155 data-nosnippet>155</a>    </span>HandlerT: TypedHandler&lt;MsgT = Ping&gt; + <span class="lifetime">'static</span>,
+<a href=#155 id=155 data-nosnippet>155</a>    </span>MsgHandlerT: TypedMsgHandler&lt;MsgT = Ping&gt; + <span class="lifetime">'static</span>,
 <a href=#156 id=156 data-nosnippet>156</a>{
-<a href=#157 id=157 data-nosnippet>157</a>    actor_ref: AnActorRef&lt;Ping, HandlerT&gt;,
+<a href=#157 id=157 data-nosnippet>157</a>    actor_ref: AnActorRef&lt;Ping, MsgHandlerT&gt;,
 <a href=#158 id=158 data-nosnippet>158</a>}
 <a href=#159 id=159 data-nosnippet>159</a>
-<a href=#160 id=160 data-nosnippet>160</a><span class="kw">impl</span>&lt;HandlerT&gt; UntypedHandler <span class="kw">for </span>NodeP2PNetworkInputHandler&lt;HandlerT&gt;
+<a href=#160 id=160 data-nosnippet>160</a><span class="kw">impl</span>&lt;MsgHandlerT&gt; UntypedMsgHandler <span class="kw">for </span>NodeP2PNetworkInputHandler&lt;MsgHandlerT&gt;
 <a href=#161 id=161 data-nosnippet>161</a><span class="kw">where
-<a href=#162 id=162 data-nosnippet>162</a>    </span>HandlerT: TypedHandler&lt;MsgT = Ping&gt; + <span class="lifetime">'static</span>,
+<a href=#162 id=162 data-nosnippet>162</a>    </span>MsgHandlerT: TypedMsgHandler&lt;MsgT = Ping&gt; + <span class="lifetime">'static</span>,
 <a href=#163 id=163 data-nosnippet>163</a>{
 <a href=#164 id=164 data-nosnippet>164</a>    <span class="kw">fn </span>receive_untyped(
 <a href=#165 id=165 data-nosnippet>165</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
@@ -255,7 +255,7 @@
 <a href=#255 id=255 data-nosnippet>255</a>    };
 <a href=#256 id=256 data-nosnippet>256</a>
 <a href=#257 id=257 data-nosnippet>257</a>    <span class="kw">use </span><span class="kw">crate</span>::utils;
-<a href=#258 id=258 data-nosnippet>258</a>    <span class="kw">use </span>bftgrid_core::actor::ActorSystem;
+<a href=#258 id=258 data-nosnippet>258</a>    <span class="kw">use </span>bftgrid_core::actor::ActorSystemHandle;
 <a href=#259 id=259 data-nosnippet>259</a>    <span class="kw">use </span>bftgrid_sim::{NodeDescriptor, Simulation};
 <a href=#260 id=260 data-nosnippet>260</a>
 <a href=#261 id=261 data-nosnippet>261</a>    <span class="kw">use crate</span>::{Actor1, Actor2, ActorRef, Ping};
