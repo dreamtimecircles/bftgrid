@@ -88,9 +88,11 @@ where
                 log::info!("Actor1 received third ping");
                 if self.spawn_count < 1 {
                     log::info!("Actor1 spawning");
-                    let mut new_ref = self
-                        .actor_system
-                        .create::<Ping>(self.node_id.clone(), self.spawn_count.to_string());
+                    let mut new_ref = self.actor_system.create::<Ping>(
+                        self.node_id.clone(),
+                        self.spawn_count.to_string(),
+                        false,
+                    );
                     log::info!("Actor1 setting handler");
                     self.actor_system.set_handler(
                         &mut new_ref,
@@ -184,7 +186,7 @@ async fn main() {
     let mut thread_actor_system =
         ThreadActorSystemHandle::new_actor_system("thread-as", None, false);
     let mut actor1_ref: bftgrid_mt::tokio::TokioActorRef<Ping> =
-        tokio_actor_system.create("node1", "actor1");
+        tokio_actor_system.create("node1", "actor1", false);
     let actor1_ref_copy = actor1_ref.clone();
     tokio_actor_system.set_handler(
         &mut actor1_ref,
@@ -195,7 +197,7 @@ async fn main() {
             network1.clone(),
         )),
     );
-    let mut actor2_ref = thread_actor_system.create("node2", "actor2");
+    let mut actor2_ref = thread_actor_system.create("node2", "actor2", false);
     thread_actor_system.set_handler(&mut actor2_ref, Box::new(Actor2::new(network2.clone())));
     let node1 = TokioP2PNetworkServer::new(
         "node1",
@@ -273,7 +275,7 @@ mod tests {
         );
         let start = Instant::now();
         let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
-        let mut actor1_ref = simulation.create("localhost:5001", "actor1");
+        let mut actor1_ref = simulation.create("localhost:5001", "actor1", false);
         let actor1_ref_copy = actor1_ref.clone();
         simulation.set_handler(
             &mut actor1_ref,
@@ -284,7 +286,7 @@ mod tests {
                 simulation.clone(),
             )),
         );
-        let mut actor2_ref = simulation.create("localhost:5002", "actor2");
+        let mut actor2_ref = simulation.create("localhost:5002", "actor2", false);
         simulation.set_handler(&mut actor2_ref, Box::new(Actor2::new(simulation.clone())));
         actor1_ref.send(Ping(), None);
         let history = simulation.run();

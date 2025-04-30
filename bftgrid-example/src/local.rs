@@ -133,9 +133,11 @@ where
                 log::info!("Actor1 simulating async work");
                 if self.spawn_count < 1 {
                     log::info!("Actor1 spawning");
-                    let mut new_ref = self
-                        .actor_system
-                        .create::<Ping>(self.node_id.clone(), self.spawn_count.to_string());
+                    let mut new_ref = self.actor_system.create::<Ping>(
+                        self.node_id.clone(),
+                        self.spawn_count.to_string(),
+                        false,
+                    );
                     log::info!("Actor1 setting handler");
                     self.actor_system.set_handler(
                         &mut new_ref,
@@ -198,9 +200,9 @@ where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
-    let mut actor1_ref = actor1_actor_system.create("node", "actor1");
+    let mut actor1_ref = actor1_actor_system.create("node", "actor1", false);
     let actor1_ref_copy = actor1_ref.clone();
-    let mut actor2_ref = actor2_actor_system.create("node", "actor2");
+    let mut actor2_ref = actor2_actor_system.create("node", "actor2", false);
     let actor2_ref_copy = actor2_ref.clone();
     actor2_actor_system.set_handler(
         &mut actor2_ref,

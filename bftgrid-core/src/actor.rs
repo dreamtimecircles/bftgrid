@@ -51,7 +51,7 @@ impl Error for MessageNotSupported {}
 pub type AnActorMsg = Box<dyn ActorMsg>;
 
 /// An [`UntypedMsgHandler`] is an actor handler that can receive messages of any type,
-/// although it may refuse to handle some of them.
+///  although it may refuse to handle some of them.
 pub trait UntypedMsgHandler: Send + Debug {
     fn receive_untyped(
         &mut self,
@@ -61,8 +61,14 @@ pub trait UntypedMsgHandler: Send + Debug {
 
 pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
 
-/// A blanket [`UntypedMsgHandler`] implementation for [`TypedMsgHandler`]
-/// to allow any typed actor to be used as a network input actor.
+/// A blanket [`UntypedMsgHandler`] implementation for any [`MsgHandler<MsgT>`]
+///  to allow any boxed typed actor to be used as a network input actor.
+// The manual supertrait upcasting approach
+//  (https://quinedot.github.io/rust-learning/dyn-trait-combining.html#manual-supertrait-upcasting)
+//  would not work in this case due to the `MsgT` type parameter being
+//  method-bound rather than trait-bound in a blanket implementation for `T: TypedMsgHandler<MsgT>`.
+//  Somewhat sadly, this means that a generic [`UntypedMsgHandler`] must be costructed via a second level
+//  of boxing (`Box<dyn UntypedMsgHandler>`).
 impl<MsgT> UntypedMsgHandler for MsgHandler<MsgT>
 where
     MsgT: ActorMsg,
@@ -111,6 +117,7 @@ pub trait ActorSystemHandle: Clone {
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
+        join_on_drop: bool,
     ) -> Self::ActorRefT<MsgT>
     where
         MsgT: ActorMsg;
