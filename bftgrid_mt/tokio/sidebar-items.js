@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["TokioActor","TokioActorSystem","TokioActorSystemHandle","TokioP2PNetworkClient","TokioP2PNetworkServer"]};
+window.SIDEBAR_ITEMS = {"struct":["TokioActorRef","TokioActorSystem","TokioActorSystemHandle","TokioP2PNetworkClient","TokioP2PNetworkServer"]};
