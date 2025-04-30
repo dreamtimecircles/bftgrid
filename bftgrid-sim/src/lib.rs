@@ -496,6 +496,7 @@ impl ActorSystemHandle for Simulation {
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
+        _join_on_drop: bool,
     ) -> SimulatedActorRef<MsgT>
     where
         MsgT: ActorMsg,

@@ -32,6 +32,7 @@ where
     tx: TUnboundedSender<MsgT>,
     handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<MsgHandler<MsgT>>>>,
     close_cond: Arc<(std::sync::Mutex<bool>, Condvar)>,
+    name: Arc<String>,
 }
 
 impl<MsgT> Clone for TokioActorData<MsgT>
@@ -43,6 +44,7 @@ where
             tx: self.tx.clone(),
             handler_tx: self.handler_tx.clone(),
             close_cond: self.close_cond.clone(),
+            name: self.name.clone(),
         }
     }
 }
@@ -54,6 +56,44 @@ where
 {
     data: TokioActorData<MsgT>,
     actor_system_handle: TokioActorSystemHandle,
+    join_on_drop: bool,
+}
+
+impl<MsgT> TokioActor<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn join(&self) {
+        let (close_mutex, cvar) = &*self.data.close_cond;
+        let mut closed = close_mutex.lock().unwrap();
+        while !*closed {
+            // The wait can be long, so block the tread safely via the runtime.
+            //  In any case, since the actor system is being dropped and this
+            //  is a one-time operation, it does not constitute a performance issue.
+            let runtime = self
+                .actor_system_handle
+                .actor_system
+                .lock()
+                .unwrap()
+                .runtime
+                .clone();
+            closed = runtime.thread_blocking(|| cvar.wait(closed).unwrap());
+        }
+    }
+}
+
+impl<MsgT> Drop for TokioActor<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn drop(&mut self) {
+        if self.join_on_drop {
+            log::debug!("Tokio actor {} dropping, joining actor", self.data.name);
+            self.join();
+        } else {
+            log::debug!("Tokio actor {} dropping, not joining actor", self.data.name);
+        }
+    }
 }
 
 impl<MsgT> Task for TokioActor<MsgT>
@@ -99,22 +139,7 @@ where
     MsgT: ActorMsg,
 {
     fn join(&mut self) {
-        let (close_mutex, cvar) = &*self.actor.data.close_cond;
-        let mut closed = close_mutex.lock().unwrap(); // Shortly held lock, no need to block the thread via the runtime
-        while !*closed {
-            // The wait can be long, so block the tread safely via the runtime.
-            //  In any case, since the actor system is being dropped and this
-            //  is a one-time operation, it does not constitute a performance issue.
-            let runtime = self
-                .actor
-                .actor_system_handle
-                .actor_system
-                .lock()
-                .unwrap()
-                .runtime
-                .clone();
-            closed = runtime.thread_blocking(|| cvar.wait(closed).unwrap());
-        }
+        self.actor.join();
     }
 }
 
@@ -177,7 +202,8 @@ impl TokioActorSystem {
             tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<MsgHandler<MsgT>>>>();
         let close_cond = Arc::new((std::sync::Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
-        let actor_name = name.into();
+        let actor_name = Arc::new(name.into());
+        let actor_name_clone = actor_name.clone();
         let actor_node_id = node_id.into();
         let actor_system_name = self.runtime.name.clone();
         self.spawn_async_task(async move {
@@ -216,6 +242,7 @@ impl TokioActorSystem {
             tx,
             handler_tx,
             close_cond,
+            name: actor_name_clone,
         }
     }
 
@@ -319,6 +346,7 @@ impl ActorSystemHandle for TokioActorSystemHandle {
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
+        join_on_drop: bool,
     ) -> Self::ActorRefT<MsgT>
     where
         MsgT: ActorMsg,
@@ -327,6 +355,7 @@ impl ActorSystemHandle for TokioActorSystemHandle {
             actor: Arc::new(TokioActor {
                 data: self.actor_system.lock().unwrap().create(name, node_id),
                 actor_system_handle: self.clone(),
+                join_on_drop,
             }),
         }
     }

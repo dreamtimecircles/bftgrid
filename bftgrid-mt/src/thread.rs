@@ -28,6 +28,7 @@ where
     tx: Sender<MsgT>,
     handler_tx: Sender<Arc<Mutex<MsgHandler<MsgT>>>>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
+    name: Arc<String>,
 }
 
 #[derive(Debug)]
@@ -37,6 +38,34 @@ where
 {
     data: ThreadActorData<MsgT>,
     actor_system: ThreadActorSystemHandle,
+    join_on_drop: bool,
+}
+
+impl<Msg> ThreadActor<Msg>
+where
+    Msg: ActorMsg,
+{
+    fn join(&self) {
+        let (close_mutex, cvar) = &*self.data.close_cond;
+        let mut closed = close_mutex.lock().unwrap();
+        while !*closed {
+            closed = cvar.wait(closed).unwrap();
+        }
+    }
+}
+
+impl<MsgT> Drop for ThreadActor<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn drop(&mut self) {
+        if self.join_on_drop {
+            log::debug!("Thread actor '{}' dropping, joining", self.data.name);
+            self.join();
+        } else {
+            log::debug!("Thread actor '{}' dropping, not joining", self.data.name);
+        }
+    }
 }
 
 impl<MsgT> Task for ThreadActor<MsgT>
@@ -81,11 +110,7 @@ where
     MsgT: ActorMsg,
 {
     fn join(&mut self) {
-        let (close_mutex, cvar) = &*self.actor.data.close_cond;
-        let mut closed = close_mutex.lock().unwrap();
-        while !*closed {
-            closed = cvar.wait(closed).unwrap();
-        }
+        self.actor.join();
     }
 }
 
@@ -154,7 +179,8 @@ impl ThreadActorSystem {
         let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<MsgHandler<MsgT>>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
-        let actor_name = name.into();
+        let actor_name = Arc::new(name.into());
+        let actor_name_clone = actor_name.clone();
         let actor_node_id = node_id.into();
         let actor_system_name = self.async_runtime.name.clone();
         self.spawn_thread_blocking_task(move || {
@@ -189,6 +215,7 @@ impl ThreadActorSystem {
             tx,
             handler_tx,
             close_cond,
+            name: actor_name_clone,
         }
     }
 
@@ -299,6 +326,7 @@ impl ActorSystemHandle for ThreadActorSystemHandle {
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
+        join_on_drop: bool,
     ) -> Self::ActorRefT<MsgT>
     where
         MsgT: ActorMsg,
@@ -307,6 +335,7 @@ impl ActorSystemHandle for ThreadActorSystemHandle {
             actor: Arc::new(ThreadActor {
                 data: self.actor_system.lock().unwrap().create(name, node_id),
                 actor_system: self.clone(),
+                join_on_drop,
             }),
         }
     }
