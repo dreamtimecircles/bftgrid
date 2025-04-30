@@ -28,13 +28,14 @@ pub enum ActorControl {
 
 /// A [`TypedMsgHandler`] is an actor behavior that can handle messages of a specific type
 /// and optionally return an [`ActorControl`] message.
-pub trait TypedMsgHandler: Send + Debug {
-    type MsgT: ActorMsg;
-
-    fn receive(&mut self, message: Self::MsgT) -> Option<ActorControl>;
+pub trait TypedMsgHandler<MsgT>: Send + Debug
+where
+    MsgT: ActorMsg,
+{
+    fn receive(&mut self, message: MsgT) -> Option<ActorControl>;
 }
 
-pub type MsgHandler<MsgT> = Box<dyn TypedMsgHandler<MsgT = MsgT>>;
+pub type MsgHandler<MsgT> = Box<dyn TypedMsgHandler<MsgT>>;
 
 #[derive(Debug, Clone)]
 pub struct MessageNotSupported();
