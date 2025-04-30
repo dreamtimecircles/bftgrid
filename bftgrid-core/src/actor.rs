@@ -34,6 +34,8 @@ pub trait TypedMsgHandler: Send + Debug {
     fn receive(&mut self, message: Self::MsgT) -> Option<ActorControl>;
 }
 
+pub type MsgHandler<MsgT> = Box<dyn TypedMsgHandler<MsgT = MsgT>>;
+
 #[derive(Debug, Clone)]
 pub struct MessageNotSupported();
 
@@ -60,16 +62,15 @@ pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
 
 /// A blanket [`UntypedMsgHandler`] implementation for [`TypedMsgHandler`]
 /// to allow any typed actor to be used as a network input actor.
-impl<MsgT, MsgHandlerT> UntypedMsgHandler for MsgHandlerT
+impl<MsgT> UntypedMsgHandler for MsgHandler<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT>,
 {
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match (message as Box<dyn Any>).downcast::<MsgHandlerT::MsgT>() {
+        match (message as Box<dyn Any>).downcast::<MsgT>() {
             Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
             Err(_) => Result::Err(MessageNotSupported()),
         }
@@ -87,27 +88,13 @@ pub trait Joinable<Output>: Task + Send + Debug {
     fn join(&mut self) -> Output;
 }
 
-pub type AnActorRef<MsgT, MsgHandlerT> = Box<dyn ActorRef<MsgT, MsgHandlerT>>;
-
 /// An [`ActorRef`] can asynchronously send messages to the underlying actor, optionally with a delay, and create new actor references.
 /// Actor implementations can use [`ActorRef`]s to send messages to themselves and to other actors.
-pub trait ActorRef<MsgT, MsgHandlerT>: Send + Debug
+pub trait ActorRef<MsgT>: Clone + Send + Debug
 where
     MsgT: ActorMsg + 'static,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>);
-    fn new_ref(&self) -> AnActorRef<MsgT, MsgHandlerT>;
-}
-
-impl<MsgT, MsgHandlerT> Clone for AnActorRef<MsgT, MsgHandlerT>
-where
-    MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
-{
-    fn clone(&self) -> Self {
-        self.new_ref()
-    }
 }
 
 /// An [`ActorSystemHandle`] allows spawning actors by creating an [`ActorRef`] and setting its handler.
@@ -115,45 +102,37 @@ where
 /// An [`ActorSystemHandle`] can be cloned.
 /// Actors themselves can use [`ActorSystemHandle`]s to spawn new actors and even to change their own handlers.
 pub trait ActorSystemHandle: Clone {
-    type ActorRefT<MsgT, MsgHandlerT>: ActorRef<MsgT, MsgHandlerT>
+    type ActorRefT<MsgT>: ActorRef<MsgT>
     where
-        MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
+        MsgT: ActorMsg;
 
-    fn create<MsgT, MsgHandlerT>(
+    fn create<MsgT>(
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
-    ) -> Self::ActorRefT<MsgT, MsgHandlerT>
+    ) -> Self::ActorRefT<MsgT>
     where
-        MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>;
+        MsgT: ActorMsg;
 
-    fn set_handler<MsgT, MsgHandlerT>(
-        &self,
-        actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
-        handler: MsgHandlerT,
-    ) where
-        MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>;
+    fn set_handler<MsgT>(&self, actor_ref: &mut Self::ActorRefT<MsgT>, handler: MsgHandler<MsgT>)
+    where
+        MsgT: ActorMsg;
 
-    fn spawn_async_send<MsgT, MsgHandlerT>(
+    fn spawn_async_send<MsgT>(
         &self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
-        MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
+        MsgT: ActorMsg + 'static;
 
-    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_thread_blocking_send<MsgT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
-        MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
+        MsgT: ActorMsg + 'static;
 }
 
 #[derive(Error, Debug, Clone)]

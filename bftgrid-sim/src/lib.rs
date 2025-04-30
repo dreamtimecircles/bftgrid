@@ -12,8 +12,8 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, P2PNetworkClient,
-    P2PNetworkResult, TypedMsgHandler, UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, MsgHandler, P2PNetworkClient,
+    P2PNetworkResult, UntypedHandlerBox,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
@@ -118,17 +118,14 @@ impl Default for NodeDescriptor {
 
 type Topology = HashMap<String, NodeDescriptor>;
 
-pub struct SimulatedActor<MsgT, MsgHandlerT> {
-    topology: Arc<Mutex<Topology>>,
+struct SimulatedActor<MsgT> {
     node_id: Arc<String>,
     name: Arc<String>,
-    handler: Arc<Mutex<Option<UntypedHandlerBox>>>,
     events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
     message_type: PhantomData<MsgT>,
-    handler_type: PhantomData<MsgHandlerT>,
 }
 
-impl<MsgT, MsgHandlerT> std::fmt::Debug for SimulatedActor<MsgT, MsgHandlerT> {
+impl<MsgT> std::fmt::Debug for SimulatedActor<MsgT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SimulatedActor")
             .field("node_id", &self.node_id)
@@ -137,30 +134,31 @@ impl<MsgT, MsgHandlerT> std::fmt::Debug for SimulatedActor<MsgT, MsgHandlerT> {
     }
 }
 
-impl<MsgT, MsgHandlerT> ActorRef<MsgT, MsgHandlerT> for SimulatedActor<MsgT, MsgHandlerT>
+#[derive(Debug)]
+pub struct SimulatedActorRef<MsgT> {
+    actor: Arc<Mutex<SimulatedActor<MsgT>>>,
+}
+
+impl<MsgT> Clone for SimulatedActorRef<MsgT> {
+    fn clone(&self) -> Self {
+        SimulatedActorRef {
+            actor: self.actor.clone(),
+        }
+    }
+}
+
+impl<MsgT> ActorRef<MsgT> for SimulatedActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
-        self.events_buffer.lock().unwrap().push(InternalEvent {
-            node: self.node_id.clone(),
-            handler: self.name.clone(),
+        let actor = self.actor.lock().unwrap();
+        actor.events_buffer.lock().unwrap().push(InternalEvent {
+            node: actor.node_id.clone(),
+            handler: actor.name.clone(),
             event: Box::new(message),
             delay,
         });
-    }
-
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, MsgHandlerT>> {
-        Box::new(SimulatedActor {
-            topology: self.topology.clone(),
-            node_id: self.node_id.clone(),
-            name: self.name.clone(),
-            handler: self.handler.clone(),
-            events_buffer: self.events_buffer.clone(),
-            message_type: self.message_type,
-            handler_type: self.handler_type,
-        })
     }
 }
 
@@ -489,21 +487,21 @@ impl std::fmt::Debug for Simulation {
 }
 
 impl ActorSystemHandle for Simulation {
-    type ActorRefT<MsgT: ActorMsg, MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static> =
-        SimulatedActor<MsgT, MsgHandlerT>;
+    type ActorRefT<MsgT>
+        = SimulatedActorRef<MsgT>
+    where
+        MsgT: ActorMsg;
 
-    fn create<MsgT, MsgHandlerT>(
+    fn create<MsgT>(
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
-    ) -> SimulatedActor<MsgT, MsgHandlerT>
+    ) -> SimulatedActorRef<MsgT>
     where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let node_id_string = node_id.into();
         let name_string = name.into();
-        let handler_rc = Arc::new(Mutex::new(None));
         let name_arc = Arc::new(name_string);
         let name_arc2 = name_arc.clone();
         if self
@@ -513,59 +511,53 @@ impl ActorSystemHandle for Simulation {
             .get_mut(&node_id_string)
             .unwrap_or_else(|| panic!("Node {:?} unknown", &node_id_string))
             .all_handlers
-            .insert(name_arc, handler_rc.clone())
+            .insert(name_arc, Arc::new(Mutex::new(None)))
             .is_some()
         {
             panic!("An actor with such a name already exist");
         }
-        SimulatedActor {
-            topology: self.topology.clone(),
-            node_id: Arc::new(node_id_string),
-            name: name_arc2,
-            handler: handler_rc,
-            events_buffer: self.internal_events_buffer.clone(),
-            message_type: PhantomData {},
-            handler_type: PhantomData {},
+        SimulatedActorRef {
+            actor: Arc::new(Mutex::new(SimulatedActor {
+                node_id: Arc::new(node_id_string),
+                name: name_arc2,
+                events_buffer: self.internal_events_buffer.clone(),
+                message_type: PhantomData {},
+            })),
         }
     }
 
-    fn set_handler<MsgT, MsgHandlerT>(
-        &self,
-        actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
-        handler: MsgHandlerT,
-    ) where
+    fn set_handler<MsgT>(&self, actor_ref: &mut SimulatedActorRef<MsgT>, handler: MsgHandler<MsgT>)
+    where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let mut topology = self.topology.lock().unwrap();
-        let node = topology.get_mut(actor_ref.node_id.as_ref()).unwrap();
+        let actor = actor_ref.actor.lock().unwrap();
+        let node = topology.get_mut(actor.node_id.as_ref()).unwrap();
         node.all_handlers.insert(
-            actor_ref.name.clone(),
+            actor.name.clone(),
             Arc::new(Mutex::new(Some(Box::new(handler)))),
         );
     }
 
-    fn spawn_async_send<MsgT, MsgHandlerT>(
+    fn spawn_async_send<MsgT>(
         &self,
-        f: impl Future<Output = MsgT> + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        f: impl Future<Output = MsgT> + 'static,
+        mut actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let res = self.tokio_runtime.block_on(f);
         actor_ref.send(res, delay);
     }
 
-    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_thread_blocking_send<MsgT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        mut actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         actor_ref.send(f(), delay);
     }
