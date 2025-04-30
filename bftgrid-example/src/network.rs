@@ -56,15 +56,13 @@ where
     }
 }
 
-impl<ActorSystemT, P2PNetworkT, Actor1RefT> TypedMsgHandler
+impl<ActorSystemT, P2PNetworkT, Actor1RefT> TypedMsgHandler<Ping>
     for Actor1<ActorSystemT, P2PNetworkT, Actor1RefT>
 where
     ActorSystemT: ActorSystemHandle + Send + std::fmt::Debug + 'static,
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
     Actor1RefT: ActorRef<Ping> + Send + std::fmt::Debug + 'static,
 {
-    type MsgT = Ping;
-
     fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
             0 => {
@@ -135,13 +133,11 @@ where
     }
 }
 
-impl<P2PNetworkT> TypedMsgHandler for Actor2<P2PNetworkT>
+impl<P2PNetworkT> TypedMsgHandler<Ping> for Actor2<P2PNetworkT>
 where
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
 {
-    type MsgT = Ping;
-
-    fn receive(&mut self, msg: Self::MsgT) -> Option<ActorControl> {
+    fn receive(&mut self, msg: Ping) -> Option<ActorControl> {
         log::info!("Actor2 received ping over the network, replying with a ping over the network");
         let mut out = self.network_out.clone();
         let _ = out.attempt_send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");

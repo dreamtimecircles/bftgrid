@@ -82,14 +82,13 @@ where
     }
 }
 
-impl<Actor1ActorSystemT, Actor1RefT> TypedMsgHandler for Actor2<Actor1ActorSystemT, Actor1RefT>
+impl<Actor1ActorSystemT, Actor1RefT> TypedMsgHandler<Actor1ToActor2<Actor1RefT>>
+    for Actor2<Actor1ActorSystemT, Actor1RefT>
 where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor1RefT: ActorRef<Ping> + 'static,
 {
-    type MsgT = Actor1ToActor2<Actor1RefT>;
-
-    fn receive(&mut self, mut msg: Self::MsgT) -> Option<ActorControl> {
+    fn receive(&mut self, mut msg: Actor1ToActor2<Actor1RefT>) -> Option<ActorControl> {
         log::info!("Actor2 received ref, sending ping to it");
         msg.actor1_ref.send(Ping(), None);
         log::info!("Actor2 sent ping, exiting");
@@ -97,15 +96,13 @@ where
     }
 }
 
-impl<ActorSystemT, Actor1RefT, Actor2RefT> TypedMsgHandler
+impl<ActorSystemT, Actor1RefT, Actor2RefT> TypedMsgHandler<Ping>
     for Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
     ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor1RefT: ActorRef<Ping> + 'static,
     Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + 'static,
 {
-    type MsgT = Ping;
-
     fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
             0 => {
