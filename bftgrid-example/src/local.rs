@@ -3,7 +3,7 @@ mod utils;
 use std::marker::PhantomData;
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, TypedMsgHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, TypedMsgHandler,
 };
 use bftgrid_mt::{thread::ThreadActorSystemHandle, tokio::TokioActorSystemHandle};
 
@@ -12,41 +12,42 @@ struct Ping();
 impl ActorMsg for Ping {}
 
 #[derive(Clone, Debug)]
-struct Actor1ToActor2<ActorSystemT>
+struct Actor1ToActor2<Actor1RefT>
 where
-    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor1RefT: ActorRef<Ping>,
 {
-    pub actor1_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
+    pub actor1_ref: Actor1RefT,
 }
 
-impl<ActorSystemT> ActorMsg for Actor1ToActor2<ActorSystemT> where
-    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static
-{
-}
+impl<Actor1RefT> ActorMsg for Actor1ToActor2<Actor1RefT> where Actor1RefT: ActorRef<Ping> + 'static {}
 
 #[derive(Debug)]
-struct Actor1<ActorSystemT>
+struct Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
-    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    ActorSystemT: ActorSystemHandle + 'static,
+    Actor1RefT: ActorRef<Ping> + 'static,
+    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>>,
 {
-    self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
+    self_ref: Actor1RefT,
     node_id: String,
     actor_system: ActorSystemT,
-    actor2_ref: AnActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>,
+    actor2_ref: Actor2RefT,
     ping_count: u8,
     spawn_count: u8,
 }
 
-impl<ActorSystemT> Actor1<ActorSystemT>
+impl<ActorSystemT, Actor1RefT, Actor2RefT> Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
     ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send,
+    Actor1RefT: ActorRef<Ping> + 'static,
+    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>>,
 {
     fn new(
-        self_ref: AnActorRef<Ping, Actor1<ActorSystemT>>,
+        self_ref: Actor1RefT,
         node_id: impl Into<String>,
         actor_system: ActorSystemT,
-        actor2_ref: AnActorRef<Actor1ToActor2<ActorSystemT>, Actor2<ActorSystemT>>,
-    ) -> Actor1<ActorSystemT> {
+        actor2_ref: Actor2RefT,
+    ) -> Actor1<ActorSystemT, Actor1RefT, Actor2RefT> {
         Actor1 {
             self_ref,
             node_id: node_id.into(),
@@ -59,29 +60,34 @@ where
 }
 
 #[derive(Debug)]
-struct Actor2<Actor1ActorSystemT>
+struct Actor2<Actor1ActorSystemT, Actor1RefT>
 where
     Actor1ActorSystemT: ActorSystemHandle,
+    Actor1RefT: ActorRef<Ping>,
 {
-    actor_system_type: PhantomData<Actor1ActorSystemT>,
+    _p1: PhantomData<Actor1ActorSystemT>,
+    _p2: PhantomData<Actor1RefT>,
 }
 
-impl<Actor1ActorSystemT> Actor2<Actor1ActorSystemT>
+impl<Actor1ActorSystemT, Actor1RefT> Actor2<Actor1ActorSystemT, Actor1RefT>
 where
     Actor1ActorSystemT: ActorSystemHandle,
+    Actor1RefT: ActorRef<Ping>,
 {
     fn new() -> Self {
         Actor2 {
-            actor_system_type: PhantomData {},
+            _p1: PhantomData {},
+            _p2: PhantomData {},
         }
     }
 }
 
-impl<Actor1ActorSystemT> TypedMsgHandler for Actor2<Actor1ActorSystemT>
+impl<Actor1ActorSystemT, Actor1RefT> TypedMsgHandler for Actor2<Actor1ActorSystemT, Actor1RefT>
 where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor1RefT: ActorRef<Ping> + 'static,
 {
-    type MsgT = Actor1ToActor2<Actor1ActorSystemT>;
+    type MsgT = Actor1ToActor2<Actor1RefT>;
 
     fn receive(&mut self, mut msg: Self::MsgT) -> Option<ActorControl> {
         log::info!("Actor2 received ref, sending ping to it");
@@ -91,9 +97,12 @@ where
     }
 }
 
-impl<ActorSystemT> TypedMsgHandler for Actor1<ActorSystemT>
+impl<ActorSystemT, Actor1RefT, Actor2RefT> TypedMsgHandler
+    for Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
     ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor1RefT: ActorRef<Ping> + 'static,
+    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + 'static,
 {
     type MsgT = Ping;
 
@@ -101,7 +110,7 @@ where
         let ret = match self.ping_count {
             0 => {
                 log::info!("Actor1 received first ping, sending ref to Actor2");
-                let self_ref = self.self_ref.new_ref();
+                let self_ref = self.self_ref.clone();
                 self.actor2_ref.send(
                     Actor1ToActor2 {
                         actor1_ref: self_ref,
@@ -117,7 +126,7 @@ where
                         log::info!("Actor1 simulating async work");
                         Ping()
                     },
-                    self.self_ref.new_ref(),
+                    self.self_ref.clone(),
                     None,
                 );
                 None
@@ -127,21 +136,20 @@ where
                 log::info!("Actor1 simulating async work");
                 if self.spawn_count < 1 {
                     log::info!("Actor1 spawning");
-                    let mut new_ref = self.actor_system.create::<Ping, Actor1<ActorSystemT>>(
-                        self.node_id.clone(),
-                        self.spawn_count.to_string(),
-                    );
+                    let mut new_ref = self
+                        .actor_system
+                        .create::<Ping>(self.node_id.clone(), self.spawn_count.to_string());
                     log::info!("Actor1 setting handler");
                     self.actor_system.set_handler(
                         &mut new_ref,
-                        Actor1 {
-                            self_ref: self.self_ref.new_ref(),
+                        Box::new(Actor1 {
+                            self_ref: self.self_ref.clone(),
                             node_id: self.node_id.clone(),
                             actor_system: self.actor_system.clone(),
-                            actor2_ref: self.actor2_ref.new_ref(),
+                            actor2_ref: self.actor2_ref.clone(),
                             ping_count: 3,
                             spawn_count: self.spawn_count + 1,
-                        },
+                        }),
                     );
                     log::info!("Actor1 sending");
                     new_ref.send(Ping(), None);
@@ -161,11 +169,8 @@ where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
-    actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
-    actor2_ref: Actor2ActorSystemT::ActorRefT<
-        Actor1ToActor2<Actor1ActorSystemT>,
-        Actor2<Actor1ActorSystemT>,
-    >,
+    actor1_ref: Actor1ActorSystemT::ActorRefT<Ping>,
+    actor2_ref: Actor2ActorSystemT::ActorRefT<Actor1ToActor2<Actor1ActorSystemT::ActorRefT<Ping>>>,
     actor1_actor_system_type: PhantomData<Actor1ActorSystemT>,
 }
 
@@ -175,10 +180,9 @@ where
     Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
     fn new(
-        actor1_ref: Actor1ActorSystemT::ActorRefT<Ping, Actor1<Actor1ActorSystemT>>,
+        actor1_ref: Actor1ActorSystemT::ActorRefT<Ping>,
         actor2_ref: Actor2ActorSystemT::ActorRefT<
-            Actor1ToActor2<Actor1ActorSystemT>,
-            Actor2<Actor1ActorSystemT>,
+            Actor1ToActor2<Actor1ActorSystemT::ActorRefT<Ping>>,
         >,
     ) -> Self {
         System {
@@ -198,18 +202,24 @@ where
     Actor2ActorSystemT: ActorSystemHandle + 'static,
 {
     let mut actor1_ref = actor1_actor_system.create("node", "actor1");
-    let actor1_ref_copy = actor1_ref.new_ref();
+    let actor1_ref_copy = actor1_ref.clone();
     let mut actor2_ref = actor2_actor_system.create("node", "actor2");
-    let actor2_ref_copy = actor2_ref.new_ref();
-    actor2_actor_system.set_handler(&mut actor2_ref, Actor2::new());
+    let actor2_ref_copy = actor2_ref.clone();
+    actor2_actor_system.set_handler(
+        &mut actor2_ref,
+        Box::new(Actor2::<
+            Actor1ActorSystemT,
+            Actor1ActorSystemT::ActorRefT<Ping>,
+        >::new()),
+    );
     actor1_actor_system.set_handler(
         &mut actor1_ref,
-        Actor1::new(
+        Box::new(Actor1::new(
             actor1_ref_copy,
             "node",
             actor1_actor_system.clone(),
             actor2_ref_copy,
-        ),
+        )),
     );
     System::new(actor1_ref, actor2_ref)
 }

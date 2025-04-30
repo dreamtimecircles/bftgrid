@@ -8,7 +8,7 @@ use std::{
 
 use ::tokio::task::JoinHandle as TokioJoinHandle;
 
-use bftgrid_core::actor::{ActorMsg, AnActorRef, Joinable, Task, TypedMsgHandler};
+use bftgrid_core::actor::{ActorMsg, ActorRef, Joinable, Task};
 
 pub mod thread;
 pub mod tokio;
@@ -163,15 +163,14 @@ impl AsyncRuntime {
         }
     }
 
-    pub fn spawn_async_send<MsgT, MsgHandlerT>(
+    pub fn spawn_async_send<MsgT>(
         &self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        mut actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) -> ::tokio::task::JoinHandle<()>
     where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => handle.spawn(async move {
@@ -197,15 +196,14 @@ impl AsyncRuntime {
     ///  It can be called from any context but creating a dedicated thread
     ///  to run the thread-blocking function, is inefficient and should be
     ///  done sparingly.
-    pub fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    pub fn spawn_thread_blocking_send<MsgT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) -> ::tokio::task::JoinHandle<()>
     where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         match ::tokio::runtime::Handle::try_current() {
             Ok(handle) => {
@@ -227,15 +225,14 @@ impl AsyncRuntime {
         }
     }
 
-    fn spawn_async_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_async_blocking_send<MsgT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        mut actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        mut actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) -> ::tokio::task::JoinHandle<()>
     where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let actor_system_name = self.name.clone();
         self.spawn_async(async move {

@@ -8,8 +8,8 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, P2PNetworkClient,
-    P2PNetworkError, P2PNetworkResult, Task, TypedMsgHandler, UntypedMsgHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, MsgHandler, P2PNetworkClient,
+    P2PNetworkError, P2PNetworkResult, Task, UntypedMsgHandler,
 };
 use futures::future;
 use tokio::{
@@ -25,20 +25,18 @@ use crate::{
 };
 
 #[derive(Debug)]
-struct TokioActorData<MsgT, MsgHandlerT>
+struct TokioActorData<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     tx: TUnboundedSender<MsgT>,
-    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<MsgHandlerT>>>,
+    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<MsgHandler<MsgT>>>>,
     close_cond: Arc<(std::sync::Mutex<bool>, Condvar)>,
 }
 
-impl<MsgT, MsgHandlerT> Clone for TokioActorData<MsgT, MsgHandlerT>
+impl<MsgT> Clone for TokioActorData<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn clone(&self) -> Self {
         TokioActorData {
@@ -50,40 +48,66 @@ where
 }
 
 #[derive(Debug)]
-pub struct TokioActor<MsgT, MsgHandlerT>
+struct TokioActor<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
-    data: TokioActorData<MsgT, MsgHandlerT>,
-    actor_system: TokioActorSystemHandle,
+    data: TokioActorData<MsgT>,
+    actor_system_handle: TokioActorSystemHandle,
 }
 
-impl<MsgT, MsgHandlerT> Task for TokioActor<MsgT, MsgHandlerT>
+impl<MsgT> Task for TokioActor<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn is_finished(&self) -> bool {
-        let (closed_mutex, _) = &*self.data.close_cond;
-        *closed_mutex.lock().unwrap()
+        *self.data.close_cond.0.lock().unwrap()
     }
 }
 
-impl<MsgT, MsgHandlerT> Joinable<()> for TokioActor<MsgT, MsgHandlerT>
+#[derive(Debug)]
+pub struct TokioActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
+{
+    actor: Arc<TokioActor<MsgT>>,
+}
+
+impl<MsgT> Clone for TokioActorRef<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn clone(&self) -> Self {
+        TokioActorRef {
+            actor: self.actor.clone(),
+        }
+    }
+}
+
+impl<MsgT> Task for TokioActorRef<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn is_finished(&self) -> bool {
+        log::debug!("Starting is_finished: locking actor");
+        self.actor.is_finished()
+    }
+}
+
+impl<MsgT> Joinable<()> for TokioActorRef<MsgT>
+where
+    MsgT: ActorMsg,
 {
     fn join(&mut self) {
-        let (close_mutex, cvar) = &*self.data.close_cond;
+        let (close_mutex, cvar) = &*self.actor.data.close_cond;
         let mut closed = close_mutex.lock().unwrap(); // Shortly held lock, no need to block the thread via the runtime
         while !*closed {
             // The wait can be long, so block the tread safely via the runtime.
             //  In any case, since the actor system is being dropped and this
             //  is a one-time operation, it does not constitute a performance issue.
             let runtime = self
-                .actor_system
+                .actor
+                .actor_system_handle
                 .actor_system
                 .lock()
                 .unwrap()
@@ -94,14 +118,14 @@ where
     }
 }
 
-impl<MsgT, MsgHandlerT> ActorRef<MsgT, MsgHandlerT> for TokioActor<MsgT, MsgHandlerT>
+impl<MsgT> ActorRef<MsgT> for TokioActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
-        let sender = self.data.tx.clone();
-        let mut actor_system = self.actor_system.actor_system.lock().unwrap();
+        let actor = &self.actor;
+        let sender = actor.data.tx.clone();
+        let mut actor_system = actor.actor_system_handle.actor_system.lock().unwrap();
         actor_system.spawn_async_task(async move {
             if let Some(delay_duration) = delay {
                 log::debug!("Delaying send by {:?}", delay_duration);
@@ -110,13 +134,6 @@ where
             checked_send(sender, message);
         });
     }
-
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, MsgHandlerT>> {
-        Box::new(TokioActor {
-            data: self.data.clone(),
-            actor_system: self.actor_system.clone(),
-        })
-    }
 }
 
 fn checked_send<MsgT>(sender: TUnboundedSender<MsgT>, message: MsgT)
@@ -124,7 +141,7 @@ where
     MsgT: ActorMsg,
 {
     match sender.send(message) {
-        Ok(_) => {}
+        Ok(_) => (),
         Err(e) => {
             log::warn!("Send from tokio actor failed: {:?}", e);
         }
@@ -147,18 +164,17 @@ impl TokioActorSystem {
         (vec![], mem::take(&mut self.async_tasks))
     }
 
-    fn create<MsgT, MsgHandlerT>(
+    fn create<MsgT>(
         &mut self,
         name: impl Into<String>,
         node_id: impl Into<String>,
-    ) -> TokioActorData<MsgT, MsgHandlerT>
+    ) -> TokioActorData<MsgT>
     where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         let (handler_tx, mut handler_rx) =
-            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<MsgHandlerT>>>();
+            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<MsgHandler<MsgT>>>>();
         let close_cond = Arc::new((std::sync::Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
@@ -203,29 +219,25 @@ impl TokioActorSystem {
         }
     }
 
-    fn set_handler<MsgT, MsgHandlerT>(
-        &mut self,
-        actor_ref: &mut TokioActor<MsgT, MsgHandlerT>,
-        handler: MsgHandlerT,
-    ) where
+    fn set_handler<MsgT>(&mut self, actor_ref: &mut TokioActorRef<MsgT>, handler: MsgHandler<MsgT>)
+    where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         actor_ref
+            .actor
             .data
             .handler_tx
             .send(Arc::new(tokio::sync::Mutex::new(handler)))
             .unwrap();
     }
 
-    fn spawn_async_send<MsgT, MsgHandlerT>(
+    fn spawn_async_send<MsgT>(
         &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         push_async_task(
             &mut self.async_tasks,
@@ -233,14 +245,13 @@ impl TokioActorSystem {
         );
     }
 
-    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_thread_blocking_send<MsgT>(
         &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         push_async_task(
             &mut self.async_tasks,
@@ -299,34 +310,30 @@ impl TokioActorSystemHandle {
 }
 
 impl ActorSystemHandle for TokioActorSystemHandle {
-    type ActorRefT<MsgT, MsgHandlerT>
-        = TokioActor<MsgT, MsgHandlerT>
+    type ActorRefT<MsgT>
+        = TokioActorRef<MsgT>
     where
-        MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
+        MsgT: ActorMsg;
 
-    fn create<MsgT, MsgHandlerT>(
+    fn create<MsgT>(
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
-    ) -> Self::ActorRefT<MsgT, MsgHandlerT>
+    ) -> Self::ActorRefT<MsgT>
     where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>,
     {
-        TokioActor {
-            data: self.actor_system.lock().unwrap().create(name, node_id),
-            actor_system: self.clone(),
+        TokioActorRef {
+            actor: Arc::new(TokioActor {
+                data: self.actor_system.lock().unwrap().create(name, node_id),
+                actor_system_handle: self.clone(),
+            }),
         }
     }
 
-    fn set_handler<MsgT, MsgHandlerT>(
-        &self,
-        actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
-        handler: MsgHandlerT,
-    ) where
+    fn set_handler<MsgT>(&self, actor_ref: &mut Self::ActorRefT<MsgT>, handler: MsgHandler<MsgT>)
+    where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>,
     {
         self.actor_system
             .lock()
@@ -334,14 +341,13 @@ impl ActorSystemHandle for TokioActorSystemHandle {
             .set_handler(actor_ref, handler);
     }
 
-    fn spawn_async_send<MsgT, MsgHandlerT>(
+    fn spawn_async_send<MsgT>(
         &self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         self.actor_system
             .lock()
@@ -349,14 +355,13 @@ impl ActorSystemHandle for TokioActorSystemHandle {
             .spawn_async_send(f, actor_ref, delay);
     }
 
-    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_thread_blocking_send<MsgT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         self.actor_system
             .lock()

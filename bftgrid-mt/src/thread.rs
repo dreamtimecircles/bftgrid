@@ -11,8 +11,7 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorRef, Joinable, Task,
-    TypedMsgHandler,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, MsgHandler, Task,
 };
 use tokio::runtime::Runtime;
 
@@ -22,58 +21,67 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ThreadActorData<MsgT, MsgHandlerT>
+pub struct ThreadActorData<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     tx: Sender<MsgT>,
-    handler_tx: Sender<Arc<Mutex<MsgHandlerT>>>,
+    handler_tx: Sender<Arc<Mutex<MsgHandler<MsgT>>>>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
 }
 
-impl<MsgT, MsgHandlerT> Clone for ThreadActorData<MsgT, MsgHandlerT>
+#[derive(Debug)]
+struct ThreadActor<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
-    fn clone(&self) -> Self {
-        ThreadActorData {
-            tx: self.tx.clone(),
-            handler_tx: self.handler_tx.clone(),
-            close_cond: self.close_cond.clone(),
-        }
+    data: ThreadActorData<MsgT>,
+    actor_system: ThreadActorSystemHandle,
+}
+
+impl<MsgT> Task for ThreadActor<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn is_finished(&self) -> bool {
+        *self.data.close_cond.0.lock().unwrap()
     }
 }
 
 #[derive(Debug)]
-pub struct ThreadActor<MsgT, MsgHandlerT>
+pub struct ThreadActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
-    data: ThreadActorData<MsgT, MsgHandlerT>,
-    actor_system: ThreadActorSystemHandle,
+    actor: Arc<ThreadActor<MsgT>>,
 }
 
-impl<MsgT, MsgHandlerT> Task for ThreadActor<MsgT, MsgHandlerT>
+impl<MsgT> Clone for ThreadActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
-    fn is_finished(&self) -> bool {
-        let (closed_mutex, _) = &*self.data.close_cond;
-        *closed_mutex.lock().unwrap()
+    fn clone(&self) -> Self {
+        ThreadActorRef {
+            actor: self.actor.clone(),
+        }
     }
 }
 
-impl<MsgT, MsgHandlerT> Joinable<()> for ThreadActor<MsgT, MsgHandlerT>
+impl<MsgT> Task for ThreadActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
+{
+    fn is_finished(&self) -> bool {
+        self.actor.is_finished()
+    }
+}
+
+impl<MsgT> Joinable<()> for ThreadActorRef<MsgT>
+where
+    MsgT: ActorMsg,
 {
     fn join(&mut self) {
-        let (close_mutex, cvar) = &*self.data.close_cond;
+        let (close_mutex, cvar) = &*self.actor.data.close_cond;
         let mut closed = close_mutex.lock().unwrap();
         while !*closed {
             closed = cvar.wait(closed).unwrap();
@@ -81,15 +89,14 @@ where
     }
 }
 
-impl<MsgT, MsgHandlerT> ActorRef<MsgT, MsgHandlerT> for ThreadActor<MsgT, MsgHandlerT>
+impl<MsgT> ActorRef<MsgT> for ThreadActorRef<MsgT>
 where
     MsgT: ActorMsg,
-    MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
-        let sender = self.data.tx.clone();
+        let sender = self.actor.data.tx.clone();
         if let Some(delay_duration) = delay {
-            self.actor_system.spawn_thread_blocking_task(move || {
+            self.actor.actor_system.spawn_thread_blocking_task(move || {
                 log::debug!("Delaying send by {:?}", delay_duration);
                 thread::sleep(delay_duration);
                 checked_send(sender, message);
@@ -98,13 +105,6 @@ where
             // No need to spawn a thread if no delay is needed, as the sender is non-blocking
             checked_send(sender, message);
         }
-    }
-
-    fn new_ref(&self) -> Box<dyn ActorRef<MsgT, MsgHandlerT>> {
-        Box::new(ThreadActor {
-            data: self.data.clone(),
-            actor_system: self.actor_system.clone(),
-        })
     }
 }
 
@@ -142,17 +142,16 @@ impl ThreadActorSystem {
         )
     }
 
-    fn create<MsgT, MsgHandlerT>(
+    fn create<MsgT>(
         &mut self,
         name: impl Into<String>,
         node_id: impl Into<String>,
-    ) -> ThreadActorData<MsgT, MsgHandlerT>
+    ) -> ThreadActorData<MsgT>
     where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         let (tx, rx) = mpsc::channel();
-        let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<MsgHandlerT>>>();
+        let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<MsgHandler<MsgT>>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         let actor_name = name.into();
@@ -193,29 +192,25 @@ impl ThreadActorSystem {
         }
     }
 
-    fn set_handler<MsgT, MsgHandlerT>(
-        &mut self,
-        actor_ref: &mut ThreadActor<MsgT, MsgHandlerT>,
-        handler: MsgHandlerT,
-    ) where
+    fn set_handler<MsgT>(&mut self, actor_ref: &mut ThreadActorRef<MsgT>, handler: MsgHandler<MsgT>)
+    where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         actor_ref
+            .actor
             .data
             .handler_tx
             .send(Arc::new(Mutex::new(handler)))
             .unwrap();
     }
 
-    fn spawn_async_send<MsgT, MsgHandlerT>(
+    fn spawn_async_send<MsgT>(
         &mut self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         push_async_task(
             &mut self.async_tasks,
@@ -223,14 +218,13 @@ impl ThreadActorSystem {
         );
     }
 
-    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_thread_blocking_send<MsgT>(
         &mut self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         push_async_task(
             &mut self.async_tasks,
@@ -287,7 +281,7 @@ impl ThreadActorSystemHandle {
         }
     }
 
-    pub fn spawn_thread_blocking_task(&mut self, f: impl FnOnce() + Send + 'static) {
+    pub fn spawn_thread_blocking_task(&self, f: impl FnOnce() + Send + 'static) {
         self.actor_system
             .lock()
             .unwrap()
@@ -296,34 +290,30 @@ impl ThreadActorSystemHandle {
 }
 
 impl ActorSystemHandle for ThreadActorSystemHandle {
-    type ActorRefT<MsgT, MsgHandlerT>
-        = ThreadActor<MsgT, MsgHandlerT>
+    type ActorRefT<MsgT>
+        = ThreadActorRef<MsgT>
     where
-        MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static;
+        MsgT: ActorMsg;
 
-    fn create<MsgT, MsgHandlerT>(
+    fn create<MsgT>(
         &self,
         node_id: impl Into<String>,
         name: impl Into<String>,
-    ) -> Self::ActorRefT<MsgT, MsgHandlerT>
+    ) -> Self::ActorRefT<MsgT>
     where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>,
     {
-        ThreadActor {
-            data: self.actor_system.lock().unwrap().create(name, node_id),
-            actor_system: self.clone(),
+        ThreadActorRef {
+            actor: Arc::new(ThreadActor {
+                data: self.actor_system.lock().unwrap().create(name, node_id),
+                actor_system: self.clone(),
+            }),
         }
     }
 
-    fn set_handler<MsgT, MsgHandlerT>(
-        &self,
-        actor_ref: &mut Self::ActorRefT<MsgT, MsgHandlerT>,
-        handler: MsgHandlerT,
-    ) where
+    fn set_handler<MsgT>(&self, actor_ref: &mut Self::ActorRefT<MsgT>, handler: MsgHandler<MsgT>)
+    where
         MsgT: ActorMsg,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT>,
     {
         self.actor_system
             .lock()
@@ -331,14 +321,13 @@ impl ActorSystemHandle for ThreadActorSystemHandle {
             .set_handler(actor_ref, handler);
     }
 
-    fn spawn_async_send<MsgT, MsgHandlerT>(
+    fn spawn_async_send<MsgT>(
         &self,
         f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         self.actor_system
             .lock()
@@ -346,14 +335,13 @@ impl ActorSystemHandle for ThreadActorSystemHandle {
             .spawn_async_send(f, actor_ref, delay);
     }
 
-    fn spawn_thread_blocking_send<MsgT, MsgHandlerT>(
+    fn spawn_thread_blocking_send<MsgT>(
         &self,
         f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: AnActorRef<MsgT, MsgHandlerT>,
+        actor_ref: impl ActorRef<MsgT> + 'static,
         delay: Option<Duration>,
     ) where
         MsgT: ActorMsg + 'static,
-        MsgHandlerT: TypedMsgHandler<MsgT = MsgT> + 'static,
     {
         self.actor_system
             .lock()
