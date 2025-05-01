@@ -1,7 +1,7 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/jiff-0.2.10/src/tz/db/mod.rs`."><title>mod.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../../static.files/rustdoc-20739d33.css"><meta name="rustdoc-vars" data-root-path="../../../../" data-static-root-path="../../../../static.files/" data-current-crate="jiff" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (b45dd71d1 2025-04-30)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../../../static.files/storage-4e99c027.js"></script><script defer src="../../../../static.files/src-script-63605ae7.js"></script><script defer src="../../../../src-files.js"></script><script defer src="../../../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">jiff/tz/db/</div>mod.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use crate</span>::{
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/jiff-0.2.11/src/tz/db/mod.rs`."><title>mod.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../../static.files/rustdoc-20739d33.css"><meta name="rustdoc-vars" data-root-path="../../../../" data-static-root-path="../../../../static.files/" data-current-crate="jiff" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (b45dd71d1 2025-04-30)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../../../static.files/storage-4e99c027.js"></script><script defer src="../../../../static.files/src-script-63605ae7.js"></script><script defer src="../../../../src-files.js"></script><script defer src="../../../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">jiff/tz/db/</div>mod.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use crate</span>::{
 <a href=#2 id=2 data-nosnippet>2</a>    error::{err, Error},
 <a href=#3 id=3 data-nosnippet>3</a>    tz::TimeZone,
-<a href=#4 id=4 data-nosnippet>4</a>    util::sync::Arc,
+<a href=#4 id=4 data-nosnippet>4</a>    util::{sync::Arc, utf8},
 <a href=#5 id=5 data-nosnippet>5</a>};
 <a href=#6 id=6 data-nosnippet>6</a>
 <a href=#7 id=7 data-nosnippet>7</a><span class="kw">mod </span>bundled;
@@ -442,272 +442,333 @@
 <a href=#442 id=442 data-nosnippet>442</a>    /// To see a list of all available time zone identifiers for this database,
 <a href=#443 id=443 data-nosnippet>443</a>    /// use [`TimeZoneDatabase::available`].
 <a href=#444 id=444 data-nosnippet>444</a>    ///
-<a href=#445 id=445 data-nosnippet>445</a>    /// # Example
-<a href=#446 id=446 data-nosnippet>446</a>    ///
-<a href=#447 id=447 data-nosnippet>447</a>    /// ```
-<a href=#448 id=448 data-nosnippet>448</a>    /// use jiff::tz;
-<a href=#449 id=449 data-nosnippet>449</a>    ///
-<a href=#450 id=450 data-nosnippet>450</a>    /// let tz = tz::db().get("america/NEW_YORK")?;
-<a href=#451 id=451 data-nosnippet>451</a>    /// assert_eq!(tz.iana_name(), Some("America/New_York"));
-<a href=#452 id=452 data-nosnippet>452</a>    ///
-<a href=#453 id=453 data-nosnippet>453</a>    /// # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
-<a href=#454 id=454 data-nosnippet>454</a>    /// ```
-<a href=#455 id=455 data-nosnippet>455</a>    </span><span class="kw">pub fn </span>get(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;TimeZone, Error&gt; {
-<a href=#456 id=456 data-nosnippet>456</a>        <span class="kw">let </span>inner = <span class="self">self</span>.inner.as_deref().ok_or_else(|| {
-<a href=#457 id=457 data-nosnippet>457</a>            <span class="kw">if </span><span class="macro">cfg!</span>(feature = <span class="string">"std"</span>) {
-<a href=#458 id=458 data-nosnippet>458</a>                <span class="macro">err!</span>(
-<a href=#459 id=459 data-nosnippet>459</a>                    <span class="string">"failed to find time zone `{name}` since there is no \
-<a href=#460 id=460 data-nosnippet>460</a>                     time zone database configured"</span>,
-<a href=#461 id=461 data-nosnippet>461</a>                )
-<a href=#462 id=462 data-nosnippet>462</a>            } <span class="kw">else </span>{
-<a href=#463 id=463 data-nosnippet>463</a>                <span class="macro">err!</span>(
-<a href=#464 id=464 data-nosnippet>464</a>                    <span class="string">"failed to find time zone `{name}`, there is no \
-<a href=#465 id=465 data-nosnippet>465</a>                     global time zone database configured (and is currently \
-<a href=#466 id=466 data-nosnippet>466</a>                     impossible to do so without Jiff's `std` feature \
-<a href=#467 id=467 data-nosnippet>467</a>                     enabled, if you need this functionality, please file \
-<a href=#468 id=468 data-nosnippet>468</a>                     an issue on Jiff's tracker with your use case)"</span>,
-<a href=#469 id=469 data-nosnippet>469</a>                )
-<a href=#470 id=470 data-nosnippet>470</a>            }
-<a href=#471 id=471 data-nosnippet>471</a>        })<span class="question-mark">?</span>;
-<a href=#472 id=472 data-nosnippet>472</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
-<a href=#473 id=473 data-nosnippet>473</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; {
-<a href=#474 id=474 data-nosnippet>474</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = db.get(name) {
-<a href=#475 id=475 data-nosnippet>475</a>                    <span class="macro">trace!</span>(<span class="string">"found time zone `{name}` in {db:?}"</span>, db = <span class="self">self</span>);
-<a href=#476 id=476 data-nosnippet>476</a>                    <span class="kw">return </span><span class="prelude-val">Ok</span>(tz);
-<a href=#477 id=477 data-nosnippet>477</a>                }
-<a href=#478 id=478 data-nosnippet>478</a>            }
-<a href=#479 id=479 data-nosnippet>479</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; {
-<a href=#480 id=480 data-nosnippet>480</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = db.get(name) {
-<a href=#481 id=481 data-nosnippet>481</a>                    <span class="macro">trace!</span>(<span class="string">"found time zone `{name}` in {db:?}"</span>, db = <span class="self">self</span>);
-<a href=#482 id=482 data-nosnippet>482</a>                    <span class="kw">return </span><span class="prelude-val">Ok</span>(tz);
-<a href=#483 id=483 data-nosnippet>483</a>                }
-<a href=#484 id=484 data-nosnippet>484</a>            }
-<a href=#485 id=485 data-nosnippet>485</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; {
-<a href=#486 id=486 data-nosnippet>486</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = db.get(name) {
-<a href=#487 id=487 data-nosnippet>487</a>                    <span class="macro">trace!</span>(<span class="string">"found time zone `{name}` in {db:?}"</span>, db = <span class="self">self</span>);
-<a href=#488 id=488 data-nosnippet>488</a>                    <span class="kw">return </span><span class="prelude-val">Ok</span>(tz);
-<a href=#489 id=489 data-nosnippet>489</a>                }
-<a href=#490 id=490 data-nosnippet>490</a>            }
-<a href=#491 id=491 data-nosnippet>491</a>        }
-<a href=#492 id=492 data-nosnippet>492</a>        <span class="prelude-val">Err</span>(<span class="macro">err!</span>(<span class="string">"failed to find time zone `{name}` in time zone database"</span>))
-<a href=#493 id=493 data-nosnippet>493</a>    }
-<a href=#494 id=494 data-nosnippet>494</a>
-<a href=#495 id=495 data-nosnippet>495</a>    <span class="doccomment">/// Returns a list of all available time zone identifiers from this
-<a href=#496 id=496 data-nosnippet>496</a>    /// database.
-<a href=#497 id=497 data-nosnippet>497</a>    ///
-<a href=#498 id=498 data-nosnippet>498</a>    /// Note that time zone identifiers are more of a machine readable
-<a href=#499 id=499 data-nosnippet>499</a>    /// abstraction and not an end user level abstraction. Still, users
-<a href=#500 id=500 data-nosnippet>500</a>    /// comfortable with configuring their system's default time zone through
-<a href=#501 id=501 data-nosnippet>501</a>    /// IANA time zone identifiers are probably comfortable interacting with
-<a href=#502 id=502 data-nosnippet>502</a>    /// the identifiers returned here.
-<a href=#503 id=503 data-nosnippet>503</a>    ///
-<a href=#504 id=504 data-nosnippet>504</a>    /// # Example
-<a href=#505 id=505 data-nosnippet>505</a>    ///
-<a href=#506 id=506 data-nosnippet>506</a>    /// ```no_run
-<a href=#507 id=507 data-nosnippet>507</a>    /// use jiff::tz;
-<a href=#508 id=508 data-nosnippet>508</a>    ///
-<a href=#509 id=509 data-nosnippet>509</a>    /// for tzid in tz::db().available() {
-<a href=#510 id=510 data-nosnippet>510</a>    ///     println!("{tzid}");
-<a href=#511 id=511 data-nosnippet>511</a>    /// }
-<a href=#512 id=512 data-nosnippet>512</a>    /// ```
-<a href=#513 id=513 data-nosnippet>513</a>    </span><span class="kw">pub fn </span>available&lt;<span class="lifetime">'d</span>&gt;(<span class="kw-2">&amp;</span><span class="lifetime">'d </span><span class="self">self</span>) -&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#514 id=514 data-nosnippet>514</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{
-<a href=#515 id=515 data-nosnippet>515</a>            <span class="kw">return </span>TimeZoneNameIter::empty();
-<a href=#516 id=516 data-nosnippet>516</a>        };
-<a href=#517 id=517 data-nosnippet>517</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
-<a href=#518 id=518 data-nosnippet>518</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; db.available(),
-<a href=#519 id=519 data-nosnippet>519</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; db.available(),
-<a href=#520 id=520 data-nosnippet>520</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; db.available(),
-<a href=#521 id=521 data-nosnippet>521</a>        }
-<a href=#522 id=522 data-nosnippet>522</a>    }
-<a href=#523 id=523 data-nosnippet>523</a>
-<a href=#524 id=524 data-nosnippet>524</a>    <span class="doccomment">/// Resets the internal cache of this database.
-<a href=#525 id=525 data-nosnippet>525</a>    ///
-<a href=#526 id=526 data-nosnippet>526</a>    /// Subsequent interactions with this database will need to re-read time
-<a href=#527 id=527 data-nosnippet>527</a>    /// zone data from disk.
-<a href=#528 id=528 data-nosnippet>528</a>    ///
-<a href=#529 id=529 data-nosnippet>529</a>    /// It might be useful to call this if you know the time zone database
-<a href=#530 id=530 data-nosnippet>530</a>    /// has changed on disk and want to force Jiff to re-load it immediately
-<a href=#531 id=531 data-nosnippet>531</a>    /// without spawning a new process or waiting for Jiff's internal cache
-<a href=#532 id=532 data-nosnippet>532</a>    /// invalidation heuristics to kick in.
-<a href=#533 id=533 data-nosnippet>533</a>    </span><span class="kw">pub fn </span>reset(<span class="kw-2">&amp;</span><span class="self">self</span>) {
-<a href=#534 id=534 data-nosnippet>534</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{ <span class="kw">return </span>};
-<a href=#535 id=535 data-nosnippet>535</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
-<a href=#536 id=536 data-nosnippet>536</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; db.reset(),
-<a href=#537 id=537 data-nosnippet>537</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; db.reset(),
-<a href=#538 id=538 data-nosnippet>538</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; db.reset(),
-<a href=#539 id=539 data-nosnippet>539</a>        }
-<a href=#540 id=540 data-nosnippet>540</a>    }
-<a href=#541 id=541 data-nosnippet>541</a>
-<a href=#542 id=542 data-nosnippet>542</a>    <span class="doccomment">/// Returns true if it is known that this time zone database is empty.
-<a href=#543 id=543 data-nosnippet>543</a>    ///
-<a href=#544 id=544 data-nosnippet>544</a>    /// When this returns true, it is guaranteed that all
-<a href=#545 id=545 data-nosnippet>545</a>    /// [`TimeZoneDatabase::get`] calls will fail, and that
-<a href=#546 id=546 data-nosnippet>546</a>    /// [`TimeZoneDatabase::available`] will always return an empty iterator.
+<a href=#445 id=445 data-nosnippet>445</a>    /// It is guaranteed that if the given time zone name is case insensitively
+<a href=#446 id=446 data-nosnippet>446</a>    /// equivalent to `UTC`, then the time zone returned will be equivalent to
+<a href=#447 id=447 data-nosnippet>447</a>    /// `TimeZone::UTC`. Similarly for `Etc/Unknown` and `TimeZone::unknown()`.
+<a href=#448 id=448 data-nosnippet>448</a>    ///
+<a href=#449 id=449 data-nosnippet>449</a>    /// # Example
+<a href=#450 id=450 data-nosnippet>450</a>    ///
+<a href=#451 id=451 data-nosnippet>451</a>    /// ```
+<a href=#452 id=452 data-nosnippet>452</a>    /// use jiff::tz;
+<a href=#453 id=453 data-nosnippet>453</a>    ///
+<a href=#454 id=454 data-nosnippet>454</a>    /// let tz = tz::db().get("america/NEW_YORK")?;
+<a href=#455 id=455 data-nosnippet>455</a>    /// assert_eq!(tz.iana_name(), Some("America/New_York"));
+<a href=#456 id=456 data-nosnippet>456</a>    ///
+<a href=#457 id=457 data-nosnippet>457</a>    /// # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+<a href=#458 id=458 data-nosnippet>458</a>    /// ```
+<a href=#459 id=459 data-nosnippet>459</a>    </span><span class="kw">pub fn </span>get(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;TimeZone, Error&gt; {
+<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span>inner = <span class="self">self</span>.inner.as_deref().ok_or_else(|| {
+<a href=#461 id=461 data-nosnippet>461</a>            <span class="kw">if </span><span class="macro">cfg!</span>(feature = <span class="string">"std"</span>) {
+<a href=#462 id=462 data-nosnippet>462</a>                <span class="macro">err!</span>(
+<a href=#463 id=463 data-nosnippet>463</a>                    <span class="string">"failed to find time zone `{name}` since there is no \
+<a href=#464 id=464 data-nosnippet>464</a>                     time zone database configured"</span>,
+<a href=#465 id=465 data-nosnippet>465</a>                )
+<a href=#466 id=466 data-nosnippet>466</a>            } <span class="kw">else </span>{
+<a href=#467 id=467 data-nosnippet>467</a>                <span class="macro">err!</span>(
+<a href=#468 id=468 data-nosnippet>468</a>                    <span class="string">"failed to find time zone `{name}`, there is no \
+<a href=#469 id=469 data-nosnippet>469</a>                     global time zone database configured (and is currently \
+<a href=#470 id=470 data-nosnippet>470</a>                     impossible to do so without Jiff's `std` feature \
+<a href=#471 id=471 data-nosnippet>471</a>                     enabled, if you need this functionality, please file \
+<a href=#472 id=472 data-nosnippet>472</a>                     an issue on Jiff's tracker with your use case)"</span>,
+<a href=#473 id=473 data-nosnippet>473</a>                )
+<a href=#474 id=474 data-nosnippet>474</a>            }
+<a href=#475 id=475 data-nosnippet>475</a>        })<span class="question-mark">?</span>;
+<a href=#476 id=476 data-nosnippet>476</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
+<a href=#477 id=477 data-nosnippet>477</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; {
+<a href=#478 id=478 data-nosnippet>478</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = db.get(name) {
+<a href=#479 id=479 data-nosnippet>479</a>                    <span class="macro">trace!</span>(<span class="string">"found time zone `{name}` in {db:?}"</span>, db = <span class="self">self</span>);
+<a href=#480 id=480 data-nosnippet>480</a>                    <span class="kw">return </span><span class="prelude-val">Ok</span>(tz);
+<a href=#481 id=481 data-nosnippet>481</a>                }
+<a href=#482 id=482 data-nosnippet>482</a>            }
+<a href=#483 id=483 data-nosnippet>483</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; {
+<a href=#484 id=484 data-nosnippet>484</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = db.get(name) {
+<a href=#485 id=485 data-nosnippet>485</a>                    <span class="macro">trace!</span>(<span class="string">"found time zone `{name}` in {db:?}"</span>, db = <span class="self">self</span>);
+<a href=#486 id=486 data-nosnippet>486</a>                    <span class="kw">return </span><span class="prelude-val">Ok</span>(tz);
+<a href=#487 id=487 data-nosnippet>487</a>                }
+<a href=#488 id=488 data-nosnippet>488</a>            }
+<a href=#489 id=489 data-nosnippet>489</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; {
+<a href=#490 id=490 data-nosnippet>490</a>                <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = db.get(name) {
+<a href=#491 id=491 data-nosnippet>491</a>                    <span class="macro">trace!</span>(<span class="string">"found time zone `{name}` in {db:?}"</span>, db = <span class="self">self</span>);
+<a href=#492 id=492 data-nosnippet>492</a>                    <span class="kw">return </span><span class="prelude-val">Ok</span>(tz);
+<a href=#493 id=493 data-nosnippet>493</a>                }
+<a href=#494 id=494 data-nosnippet>494</a>            }
+<a href=#495 id=495 data-nosnippet>495</a>        }
+<a href=#496 id=496 data-nosnippet>496</a>        <span class="prelude-val">Err</span>(<span class="macro">err!</span>(<span class="string">"failed to find time zone `{name}` in time zone database"</span>))
+<a href=#497 id=497 data-nosnippet>497</a>    }
+<a href=#498 id=498 data-nosnippet>498</a>
+<a href=#499 id=499 data-nosnippet>499</a>    <span class="doccomment">/// Returns a list of all available time zone identifiers from this
+<a href=#500 id=500 data-nosnippet>500</a>    /// database.
+<a href=#501 id=501 data-nosnippet>501</a>    ///
+<a href=#502 id=502 data-nosnippet>502</a>    /// Note that time zone identifiers are more of a machine readable
+<a href=#503 id=503 data-nosnippet>503</a>    /// abstraction and not an end user level abstraction. Still, users
+<a href=#504 id=504 data-nosnippet>504</a>    /// comfortable with configuring their system's default time zone through
+<a href=#505 id=505 data-nosnippet>505</a>    /// IANA time zone identifiers are probably comfortable interacting with
+<a href=#506 id=506 data-nosnippet>506</a>    /// the identifiers returned here.
+<a href=#507 id=507 data-nosnippet>507</a>    ///
+<a href=#508 id=508 data-nosnippet>508</a>    /// # Example
+<a href=#509 id=509 data-nosnippet>509</a>    ///
+<a href=#510 id=510 data-nosnippet>510</a>    /// ```no_run
+<a href=#511 id=511 data-nosnippet>511</a>    /// use jiff::tz;
+<a href=#512 id=512 data-nosnippet>512</a>    ///
+<a href=#513 id=513 data-nosnippet>513</a>    /// for tzid in tz::db().available() {
+<a href=#514 id=514 data-nosnippet>514</a>    ///     println!("{tzid}");
+<a href=#515 id=515 data-nosnippet>515</a>    /// }
+<a href=#516 id=516 data-nosnippet>516</a>    /// ```
+<a href=#517 id=517 data-nosnippet>517</a>    </span><span class="kw">pub fn </span>available&lt;<span class="lifetime">'d</span>&gt;(<span class="kw-2">&amp;</span><span class="lifetime">'d </span><span class="self">self</span>) -&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#518 id=518 data-nosnippet>518</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{
+<a href=#519 id=519 data-nosnippet>519</a>            <span class="kw">return </span>TimeZoneNameIter::empty();
+<a href=#520 id=520 data-nosnippet>520</a>        };
+<a href=#521 id=521 data-nosnippet>521</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
+<a href=#522 id=522 data-nosnippet>522</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; db.available(),
+<a href=#523 id=523 data-nosnippet>523</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; db.available(),
+<a href=#524 id=524 data-nosnippet>524</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; db.available(),
+<a href=#525 id=525 data-nosnippet>525</a>        }
+<a href=#526 id=526 data-nosnippet>526</a>    }
+<a href=#527 id=527 data-nosnippet>527</a>
+<a href=#528 id=528 data-nosnippet>528</a>    <span class="doccomment">/// Resets the internal cache of this database.
+<a href=#529 id=529 data-nosnippet>529</a>    ///
+<a href=#530 id=530 data-nosnippet>530</a>    /// Subsequent interactions with this database will need to re-read time
+<a href=#531 id=531 data-nosnippet>531</a>    /// zone data from disk.
+<a href=#532 id=532 data-nosnippet>532</a>    ///
+<a href=#533 id=533 data-nosnippet>533</a>    /// It might be useful to call this if you know the time zone database
+<a href=#534 id=534 data-nosnippet>534</a>    /// has changed on disk and want to force Jiff to re-load it immediately
+<a href=#535 id=535 data-nosnippet>535</a>    /// without spawning a new process or waiting for Jiff's internal cache
+<a href=#536 id=536 data-nosnippet>536</a>    /// invalidation heuristics to kick in.
+<a href=#537 id=537 data-nosnippet>537</a>    </span><span class="kw">pub fn </span>reset(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+<a href=#538 id=538 data-nosnippet>538</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{ <span class="kw">return </span>};
+<a href=#539 id=539 data-nosnippet>539</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
+<a href=#540 id=540 data-nosnippet>540</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; db.reset(),
+<a href=#541 id=541 data-nosnippet>541</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; db.reset(),
+<a href=#542 id=542 data-nosnippet>542</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; db.reset(),
+<a href=#543 id=543 data-nosnippet>543</a>        }
+<a href=#544 id=544 data-nosnippet>544</a>    }
+<a href=#545 id=545 data-nosnippet>545</a>
+<a href=#546 id=546 data-nosnippet>546</a>    <span class="doccomment">/// Returns true if it is known that this time zone database is empty.
 <a href=#547 id=547 data-nosnippet>547</a>    ///
-<a href=#548 id=548 data-nosnippet>548</a>    /// Note that if this returns false, it is still possible for this database
-<a href=#549 id=549 data-nosnippet>549</a>    /// to be empty.
-<a href=#550 id=550 data-nosnippet>550</a>    ///
-<a href=#551 id=551 data-nosnippet>551</a>    /// # Example
-<a href=#552 id=552 data-nosnippet>552</a>    ///
-<a href=#553 id=553 data-nosnippet>553</a>    /// ```
-<a href=#554 id=554 data-nosnippet>554</a>    /// use jiff::tz::TimeZoneDatabase;
-<a href=#555 id=555 data-nosnippet>555</a>    ///
-<a href=#556 id=556 data-nosnippet>556</a>    /// let db = TimeZoneDatabase::none();
-<a href=#557 id=557 data-nosnippet>557</a>    /// assert!(db.is_definitively_empty());
-<a href=#558 id=558 data-nosnippet>558</a>    /// ```
-<a href=#559 id=559 data-nosnippet>559</a>    </span><span class="kw">pub fn </span>is_definitively_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-<a href=#560 id=560 data-nosnippet>560</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{ <span class="kw">return </span><span class="bool-val">true </span>};
-<a href=#561 id=561 data-nosnippet>561</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
-<a href=#562 id=562 data-nosnippet>562</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; db.is_definitively_empty(),
-<a href=#563 id=563 data-nosnippet>563</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; db.is_definitively_empty(),
-<a href=#564 id=564 data-nosnippet>564</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; db.is_definitively_empty(),
-<a href=#565 id=565 data-nosnippet>565</a>        }
-<a href=#566 id=566 data-nosnippet>566</a>    }
-<a href=#567 id=567 data-nosnippet>567</a>}
-<a href=#568 id=568 data-nosnippet>568</a>
-<a href=#569 id=569 data-nosnippet>569</a><span class="kw">impl </span>core::fmt::Debug <span class="kw">for </span>TimeZoneDatabase {
-<a href=#570 id=570 data-nosnippet>570</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter) -&gt; core::fmt::Result {
-<a href=#571 id=571 data-nosnippet>571</a>        <span class="macro">write!</span>(f, <span class="string">"TimeZoneDatabase("</span>)<span class="question-mark">?</span>;
-<a href=#572 id=572 data-nosnippet>572</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{
-<a href=#573 id=573 data-nosnippet>573</a>            <span class="kw">return </span><span class="macro">write!</span>(f, <span class="string">"unavailable)"</span>);
-<a href=#574 id=574 data-nosnippet>574</a>        };
-<a href=#575 id=575 data-nosnippet>575</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
-<a href=#576 id=576 data-nosnippet>576</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; <span class="macro">write!</span>(f, <span class="string">"{db:?}"</span>)<span class="question-mark">?</span>,
-<a href=#577 id=577 data-nosnippet>577</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; <span class="macro">write!</span>(f, <span class="string">"{db:?}"</span>)<span class="question-mark">?</span>,
-<a href=#578 id=578 data-nosnippet>578</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; <span class="macro">write!</span>(f, <span class="string">"{db:?}"</span>)<span class="question-mark">?</span>,
-<a href=#579 id=579 data-nosnippet>579</a>        }
-<a href=#580 id=580 data-nosnippet>580</a>        <span class="macro">write!</span>(f, <span class="string">")"</span>)
-<a href=#581 id=581 data-nosnippet>581</a>    }
-<a href=#582 id=582 data-nosnippet>582</a>}
-<a href=#583 id=583 data-nosnippet>583</a>
-<a href=#584 id=584 data-nosnippet>584</a><span class="doccomment">/// An iterator over the time zone identifiers in a [`TimeZoneDatabase`].
-<a href=#585 id=585 data-nosnippet>585</a>///
-<a href=#586 id=586 data-nosnippet>586</a>/// This iterator is created by [`TimeZoneDatabase::available`].
-<a href=#587 id=587 data-nosnippet>587</a>///
-<a href=#588 id=588 data-nosnippet>588</a>/// There are no guarantees about the order in which this iterator yields
-<a href=#589 id=589 data-nosnippet>589</a>/// time zone identifiers.
-<a href=#590 id=590 data-nosnippet>590</a>///
-<a href=#591 id=591 data-nosnippet>591</a>/// The lifetime parameter corresponds to the lifetime of the
-<a href=#592 id=592 data-nosnippet>592</a>/// `TimeZoneDatabase` from which this iterator was created.
-<a href=#593 id=593 data-nosnippet>593</a></span><span class="attr">#[derive(Clone, Debug)]
-<a href=#594 id=594 data-nosnippet>594</a></span><span class="kw">pub struct </span>TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#595 id=595 data-nosnippet>595</a>    <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#596 id=596 data-nosnippet>596</a>    </span>it: alloc::vec::IntoIter&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt;,
-<a href=#597 id=597 data-nosnippet>597</a>    <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
-<a href=#598 id=598 data-nosnippet>598</a>    </span>it: core::iter::Empty&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt;,
-<a href=#599 id=599 data-nosnippet>599</a>}
-<a href=#600 id=600 data-nosnippet>600</a>
-<a href=#601 id=601 data-nosnippet>601</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#602 id=602 data-nosnippet>602</a>    <span class="doccomment">/// Creates a time zone name iterator that never yields any elements.
-<a href=#603 id=603 data-nosnippet>603</a>    </span><span class="kw">fn </span>empty() -&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#604 id=604 data-nosnippet>604</a>        <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#605 id=605 data-nosnippet>605</a>        </span>{
-<a href=#606 id=606 data-nosnippet>606</a>            TimeZoneNameIter { it: alloc::vec::Vec::new().into_iter() }
-<a href=#607 id=607 data-nosnippet>607</a>        }
-<a href=#608 id=608 data-nosnippet>608</a>        <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#548 id=548 data-nosnippet>548</a>    /// When this returns true, it is guaranteed that all
+<a href=#549 id=549 data-nosnippet>549</a>    /// [`TimeZoneDatabase::get`] calls will fail, and that
+<a href=#550 id=550 data-nosnippet>550</a>    /// [`TimeZoneDatabase::available`] will always return an empty iterator.
+<a href=#551 id=551 data-nosnippet>551</a>    ///
+<a href=#552 id=552 data-nosnippet>552</a>    /// Note that if this returns false, it is still possible for this database
+<a href=#553 id=553 data-nosnippet>553</a>    /// to be empty.
+<a href=#554 id=554 data-nosnippet>554</a>    ///
+<a href=#555 id=555 data-nosnippet>555</a>    /// # Example
+<a href=#556 id=556 data-nosnippet>556</a>    ///
+<a href=#557 id=557 data-nosnippet>557</a>    /// ```
+<a href=#558 id=558 data-nosnippet>558</a>    /// use jiff::tz::TimeZoneDatabase;
+<a href=#559 id=559 data-nosnippet>559</a>    ///
+<a href=#560 id=560 data-nosnippet>560</a>    /// let db = TimeZoneDatabase::none();
+<a href=#561 id=561 data-nosnippet>561</a>    /// assert!(db.is_definitively_empty());
+<a href=#562 id=562 data-nosnippet>562</a>    /// ```
+<a href=#563 id=563 data-nosnippet>563</a>    </span><span class="kw">pub fn </span>is_definitively_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+<a href=#564 id=564 data-nosnippet>564</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{ <span class="kw">return </span><span class="bool-val">true </span>};
+<a href=#565 id=565 data-nosnippet>565</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
+<a href=#566 id=566 data-nosnippet>566</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; db.is_definitively_empty(),
+<a href=#567 id=567 data-nosnippet>567</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; db.is_definitively_empty(),
+<a href=#568 id=568 data-nosnippet>568</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; db.is_definitively_empty(),
+<a href=#569 id=569 data-nosnippet>569</a>        }
+<a href=#570 id=570 data-nosnippet>570</a>    }
+<a href=#571 id=571 data-nosnippet>571</a>}
+<a href=#572 id=572 data-nosnippet>572</a>
+<a href=#573 id=573 data-nosnippet>573</a><span class="kw">impl </span>core::fmt::Debug <span class="kw">for </span>TimeZoneDatabase {
+<a href=#574 id=574 data-nosnippet>574</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter) -&gt; core::fmt::Result {
+<a href=#575 id=575 data-nosnippet>575</a>        <span class="macro">write!</span>(f, <span class="string">"TimeZoneDatabase("</span>)<span class="question-mark">?</span>;
+<a href=#576 id=576 data-nosnippet>576</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(inner) = <span class="self">self</span>.inner.as_deref() <span class="kw">else </span>{
+<a href=#577 id=577 data-nosnippet>577</a>            <span class="kw">return </span><span class="macro">write!</span>(f, <span class="string">"unavailable)"</span>);
+<a href=#578 id=578 data-nosnippet>578</a>        };
+<a href=#579 id=579 data-nosnippet>579</a>        <span class="kw">match </span><span class="kw-2">*</span>inner {
+<a href=#580 id=580 data-nosnippet>580</a>            Kind::ZoneInfo(<span class="kw-2">ref </span>db) =&gt; <span class="macro">write!</span>(f, <span class="string">"{db:?}"</span>)<span class="question-mark">?</span>,
+<a href=#581 id=581 data-nosnippet>581</a>            Kind::Concatenated(<span class="kw-2">ref </span>db) =&gt; <span class="macro">write!</span>(f, <span class="string">"{db:?}"</span>)<span class="question-mark">?</span>,
+<a href=#582 id=582 data-nosnippet>582</a>            Kind::Bundled(<span class="kw-2">ref </span>db) =&gt; <span class="macro">write!</span>(f, <span class="string">"{db:?}"</span>)<span class="question-mark">?</span>,
+<a href=#583 id=583 data-nosnippet>583</a>        }
+<a href=#584 id=584 data-nosnippet>584</a>        <span class="macro">write!</span>(f, <span class="string">")"</span>)
+<a href=#585 id=585 data-nosnippet>585</a>    }
+<a href=#586 id=586 data-nosnippet>586</a>}
+<a href=#587 id=587 data-nosnippet>587</a>
+<a href=#588 id=588 data-nosnippet>588</a><span class="doccomment">/// An iterator over the time zone identifiers in a [`TimeZoneDatabase`].
+<a href=#589 id=589 data-nosnippet>589</a>///
+<a href=#590 id=590 data-nosnippet>590</a>/// This iterator is created by [`TimeZoneDatabase::available`].
+<a href=#591 id=591 data-nosnippet>591</a>///
+<a href=#592 id=592 data-nosnippet>592</a>/// There are no guarantees about the order in which this iterator yields
+<a href=#593 id=593 data-nosnippet>593</a>/// time zone identifiers.
+<a href=#594 id=594 data-nosnippet>594</a>///
+<a href=#595 id=595 data-nosnippet>595</a>/// The lifetime parameter corresponds to the lifetime of the
+<a href=#596 id=596 data-nosnippet>596</a>/// `TimeZoneDatabase` from which this iterator was created.
+<a href=#597 id=597 data-nosnippet>597</a></span><span class="attr">#[derive(Clone, Debug)]
+<a href=#598 id=598 data-nosnippet>598</a></span><span class="kw">pub struct </span>TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#599 id=599 data-nosnippet>599</a>    <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#600 id=600 data-nosnippet>600</a>    </span>it: alloc::vec::IntoIter&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt;,
+<a href=#601 id=601 data-nosnippet>601</a>    <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#602 id=602 data-nosnippet>602</a>    </span>it: core::iter::Empty&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt;,
+<a href=#603 id=603 data-nosnippet>603</a>}
+<a href=#604 id=604 data-nosnippet>604</a>
+<a href=#605 id=605 data-nosnippet>605</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#606 id=606 data-nosnippet>606</a>    <span class="doccomment">/// Creates a time zone name iterator that never yields any elements.
+<a href=#607 id=607 data-nosnippet>607</a>    </span><span class="kw">fn </span>empty() -&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#608 id=608 data-nosnippet>608</a>        <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
 <a href=#609 id=609 data-nosnippet>609</a>        </span>{
-<a href=#610 id=610 data-nosnippet>610</a>            TimeZoneNameIter { it: core::iter::empty() }
+<a href=#610 id=610 data-nosnippet>610</a>            TimeZoneNameIter { it: alloc::vec::Vec::new().into_iter() }
 <a href=#611 id=611 data-nosnippet>611</a>        }
-<a href=#612 id=612 data-nosnippet>612</a>    }
-<a href=#613 id=613 data-nosnippet>613</a>
-<a href=#614 id=614 data-nosnippet>614</a>    <span class="doccomment">/// Creates a time zone name iterator that yields the elements from the
-<a href=#615 id=615 data-nosnippet>615</a>    /// iterator given. (They are collected into a `Vec`.)
-<a href=#616 id=616 data-nosnippet>616</a>    </span><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#617 id=617 data-nosnippet>617</a>    </span><span class="kw">fn </span>from_iter(
-<a href=#618 id=618 data-nosnippet>618</a>        it: <span class="kw">impl </span>Iterator&lt;Item = <span class="kw">impl </span>Into&lt;alloc::string::String&gt;&gt;,
-<a href=#619 id=619 data-nosnippet>619</a>    ) -&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#620 id=620 data-nosnippet>620</a>        <span class="kw">let </span>names: alloc::vec::Vec&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt; =
-<a href=#621 id=621 data-nosnippet>621</a>            it.map(|name| TimeZoneName::new(name.into())).collect();
-<a href=#622 id=622 data-nosnippet>622</a>        TimeZoneNameIter { it: names.into_iter() }
-<a href=#623 id=623 data-nosnippet>623</a>    }
-<a href=#624 id=624 data-nosnippet>624</a>}
-<a href=#625 id=625 data-nosnippet>625</a>
-<a href=#626 id=626 data-nosnippet>626</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; Iterator <span class="kw">for </span>TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#627 id=627 data-nosnippet>627</a>    <span class="kw">type </span>Item = TimeZoneName&lt;<span class="lifetime">'d</span>&gt;;
-<a href=#628 id=628 data-nosnippet>628</a>
-<a href=#629 id=629 data-nosnippet>629</a>    <span class="kw">fn </span>next(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt; {
-<a href=#630 id=630 data-nosnippet>630</a>        <span class="self">self</span>.it.next()
-<a href=#631 id=631 data-nosnippet>631</a>    }
-<a href=#632 id=632 data-nosnippet>632</a>}
-<a href=#633 id=633 data-nosnippet>633</a>
-<a href=#634 id=634 data-nosnippet>634</a><span class="doccomment">/// A name for a time zone yield by the [`TimeZoneNameIter`] iterator.
-<a href=#635 id=635 data-nosnippet>635</a>///
-<a href=#636 id=636 data-nosnippet>636</a>/// The iterator is created by [`TimeZoneDatabase::available`].
-<a href=#637 id=637 data-nosnippet>637</a>///
-<a href=#638 id=638 data-nosnippet>638</a>/// The lifetime parameter corresponds to the lifetime of the
-<a href=#639 id=639 data-nosnippet>639</a>/// `TimeZoneDatabase` from which this name was created.
-<a href=#640 id=640 data-nosnippet>640</a></span><span class="attr">#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-<a href=#641 id=641 data-nosnippet>641</a></span><span class="kw">pub struct </span>TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#642 id=642 data-nosnippet>642</a>    <span class="doccomment">/// The lifetime of the tzdb.
-<a href=#643 id=643 data-nosnippet>643</a>    ///
-<a href=#644 id=644 data-nosnippet>644</a>    /// We don't currently use this, but it could be quite useful if we ever
-<a href=#645 id=645 data-nosnippet>645</a>    /// adopt a "compile time" tzdb like what `chrono-tz` has. Then we could
-<a href=#646 id=646 data-nosnippet>646</a>    /// return strings directly from the embedded data. Or perhaps a "compile
-<a href=#647 id=647 data-nosnippet>647</a>    /// time" TZif or some such.
-<a href=#648 id=648 data-nosnippet>648</a>    </span>lifetime: core::marker::PhantomData&lt;<span class="kw-2">&amp;</span><span class="lifetime">'d </span>str&gt;,
-<a href=#649 id=649 data-nosnippet>649</a>    <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#650 id=650 data-nosnippet>650</a>    </span>name: alloc::string::String,
-<a href=#651 id=651 data-nosnippet>651</a>    <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
-<a href=#652 id=652 data-nosnippet>652</a>    </span>name: core::convert::Infallible,
-<a href=#653 id=653 data-nosnippet>653</a>}
-<a href=#654 id=654 data-nosnippet>654</a>
-<a href=#655 id=655 data-nosnippet>655</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#656 id=656 data-nosnippet>656</a>    <span class="doccomment">/// Returns a new time zone name from the string given.
-<a href=#657 id=657 data-nosnippet>657</a>    ///
-<a href=#658 id=658 data-nosnippet>658</a>    /// The lifetime returned is inferred according to the caller's context.
-<a href=#659 id=659 data-nosnippet>659</a>    </span><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#660 id=660 data-nosnippet>660</a>    </span><span class="kw">fn </span>new(name: alloc::string::String) -&gt; TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#661 id=661 data-nosnippet>661</a>        TimeZoneName { lifetime: core::marker::PhantomData, name }
-<a href=#662 id=662 data-nosnippet>662</a>    }
-<a href=#663 id=663 data-nosnippet>663</a>
-<a href=#664 id=664 data-nosnippet>664</a>    <span class="doccomment">/// Returns this time zone name as a borrowed string.
-<a href=#665 id=665 data-nosnippet>665</a>    ///
-<a href=#666 id=666 data-nosnippet>666</a>    /// Note that the lifetime of the string returned is tied to `self`,
-<a href=#667 id=667 data-nosnippet>667</a>    /// which may be shorter than the lifetime `'d` of the originating
-<a href=#668 id=668 data-nosnippet>668</a>    /// `TimeZoneDatabase`.
-<a href=#669 id=669 data-nosnippet>669</a>    </span><span class="attr">#[inline]
-<a href=#670 id=670 data-nosnippet>670</a>    </span><span class="kw">pub fn </span>as_str&lt;<span class="lifetime">'a</span>&gt;(<span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str {
-<a href=#671 id=671 data-nosnippet>671</a>        <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#672 id=672 data-nosnippet>672</a>        </span>{
-<a href=#673 id=673 data-nosnippet>673</a>            <span class="self">self</span>.name.as_str()
-<a href=#674 id=674 data-nosnippet>674</a>        }
-<a href=#675 id=675 data-nosnippet>675</a>        <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#612 id=612 data-nosnippet>612</a>        <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#613 id=613 data-nosnippet>613</a>        </span>{
+<a href=#614 id=614 data-nosnippet>614</a>            TimeZoneNameIter { it: core::iter::empty() }
+<a href=#615 id=615 data-nosnippet>615</a>        }
+<a href=#616 id=616 data-nosnippet>616</a>    }
+<a href=#617 id=617 data-nosnippet>617</a>
+<a href=#618 id=618 data-nosnippet>618</a>    <span class="doccomment">/// Creates a time zone name iterator that yields the elements from the
+<a href=#619 id=619 data-nosnippet>619</a>    /// iterator given. (They are collected into a `Vec`.)
+<a href=#620 id=620 data-nosnippet>620</a>    </span><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#621 id=621 data-nosnippet>621</a>    </span><span class="kw">fn </span>from_iter(
+<a href=#622 id=622 data-nosnippet>622</a>        it: <span class="kw">impl </span>Iterator&lt;Item = <span class="kw">impl </span>Into&lt;alloc::string::String&gt;&gt;,
+<a href=#623 id=623 data-nosnippet>623</a>    ) -&gt; TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#624 id=624 data-nosnippet>624</a>        <span class="kw">let </span>names: alloc::vec::Vec&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt; =
+<a href=#625 id=625 data-nosnippet>625</a>            it.map(|name| TimeZoneName::new(name.into())).collect();
+<a href=#626 id=626 data-nosnippet>626</a>        TimeZoneNameIter { it: names.into_iter() }
+<a href=#627 id=627 data-nosnippet>627</a>    }
+<a href=#628 id=628 data-nosnippet>628</a>}
+<a href=#629 id=629 data-nosnippet>629</a>
+<a href=#630 id=630 data-nosnippet>630</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; Iterator <span class="kw">for </span>TimeZoneNameIter&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#631 id=631 data-nosnippet>631</a>    <span class="kw">type </span>Item = TimeZoneName&lt;<span class="lifetime">'d</span>&gt;;
+<a href=#632 id=632 data-nosnippet>632</a>
+<a href=#633 id=633 data-nosnippet>633</a>    <span class="kw">fn </span>next(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;TimeZoneName&lt;<span class="lifetime">'d</span>&gt;&gt; {
+<a href=#634 id=634 data-nosnippet>634</a>        <span class="self">self</span>.it.next()
+<a href=#635 id=635 data-nosnippet>635</a>    }
+<a href=#636 id=636 data-nosnippet>636</a>}
+<a href=#637 id=637 data-nosnippet>637</a>
+<a href=#638 id=638 data-nosnippet>638</a><span class="doccomment">/// A name for a time zone yield by the [`TimeZoneNameIter`] iterator.
+<a href=#639 id=639 data-nosnippet>639</a>///
+<a href=#640 id=640 data-nosnippet>640</a>/// The iterator is created by [`TimeZoneDatabase::available`].
+<a href=#641 id=641 data-nosnippet>641</a>///
+<a href=#642 id=642 data-nosnippet>642</a>/// The lifetime parameter corresponds to the lifetime of the
+<a href=#643 id=643 data-nosnippet>643</a>/// `TimeZoneDatabase` from which this name was created.
+<a href=#644 id=644 data-nosnippet>644</a></span><span class="attr">#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+<a href=#645 id=645 data-nosnippet>645</a></span><span class="kw">pub struct </span>TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#646 id=646 data-nosnippet>646</a>    <span class="doccomment">/// The lifetime of the tzdb.
+<a href=#647 id=647 data-nosnippet>647</a>    ///
+<a href=#648 id=648 data-nosnippet>648</a>    /// We don't currently use this, but it could be quite useful if we ever
+<a href=#649 id=649 data-nosnippet>649</a>    /// adopt a "compile time" tzdb like what `chrono-tz` has. Then we could
+<a href=#650 id=650 data-nosnippet>650</a>    /// return strings directly from the embedded data. Or perhaps a "compile
+<a href=#651 id=651 data-nosnippet>651</a>    /// time" TZif or some such.
+<a href=#652 id=652 data-nosnippet>652</a>    </span>lifetime: core::marker::PhantomData&lt;<span class="kw-2">&amp;</span><span class="lifetime">'d </span>str&gt;,
+<a href=#653 id=653 data-nosnippet>653</a>    <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#654 id=654 data-nosnippet>654</a>    </span>name: alloc::string::String,
+<a href=#655 id=655 data-nosnippet>655</a>    <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#656 id=656 data-nosnippet>656</a>    </span>name: core::convert::Infallible,
+<a href=#657 id=657 data-nosnippet>657</a>}
+<a href=#658 id=658 data-nosnippet>658</a>
+<a href=#659 id=659 data-nosnippet>659</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#660 id=660 data-nosnippet>660</a>    <span class="doccomment">/// Returns a new time zone name from the string given.
+<a href=#661 id=661 data-nosnippet>661</a>    ///
+<a href=#662 id=662 data-nosnippet>662</a>    /// The lifetime returned is inferred according to the caller's context.
+<a href=#663 id=663 data-nosnippet>663</a>    </span><span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#664 id=664 data-nosnippet>664</a>    </span><span class="kw">fn </span>new(name: alloc::string::String) -&gt; TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#665 id=665 data-nosnippet>665</a>        TimeZoneName { lifetime: core::marker::PhantomData, name }
+<a href=#666 id=666 data-nosnippet>666</a>    }
+<a href=#667 id=667 data-nosnippet>667</a>
+<a href=#668 id=668 data-nosnippet>668</a>    <span class="doccomment">/// Returns this time zone name as a borrowed string.
+<a href=#669 id=669 data-nosnippet>669</a>    ///
+<a href=#670 id=670 data-nosnippet>670</a>    /// Note that the lifetime of the string returned is tied to `self`,
+<a href=#671 id=671 data-nosnippet>671</a>    /// which may be shorter than the lifetime `'d` of the originating
+<a href=#672 id=672 data-nosnippet>672</a>    /// `TimeZoneDatabase`.
+<a href=#673 id=673 data-nosnippet>673</a>    </span><span class="attr">#[inline]
+<a href=#674 id=674 data-nosnippet>674</a>    </span><span class="kw">pub fn </span>as_str&lt;<span class="lifetime">'a</span>&gt;(<span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str {
+<a href=#675 id=675 data-nosnippet>675</a>        <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
 <a href=#676 id=676 data-nosnippet>676</a>        </span>{
-<a href=#677 id=677 data-nosnippet>677</a>            <span class="comment">// Can never be reached because `TimeZoneName` cannot currently
-<a href=#678 id=678 data-nosnippet>678</a>            // be constructed in core-only environments.
-<a href=#679 id=679 data-nosnippet>679</a>            </span><span class="macro">unreachable!</span>()
-<a href=#680 id=680 data-nosnippet>680</a>        }
-<a href=#681 id=681 data-nosnippet>681</a>    }
-<a href=#682 id=682 data-nosnippet>682</a>}
-<a href=#683 id=683 data-nosnippet>683</a>
-<a href=#684 id=684 data-nosnippet>684</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; core::fmt::Display <span class="kw">for </span>TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
-<a href=#685 id=685 data-nosnippet>685</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter) -&gt; core::fmt::Result {
-<a href=#686 id=686 data-nosnippet>686</a>        <span class="macro">write!</span>(f, <span class="string">"{}"</span>, <span class="self">self</span>.as_str())
-<a href=#687 id=687 data-nosnippet>687</a>    }
-<a href=#688 id=688 data-nosnippet>688</a>}
-<a href=#689 id=689 data-nosnippet>689</a>
-<a href=#690 id=690 data-nosnippet>690</a><span class="attr">#[cfg(test)]
-<a href=#691 id=691 data-nosnippet>691</a></span><span class="kw">mod </span>tests {
-<a href=#692 id=692 data-nosnippet>692</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#677 id=677 data-nosnippet>677</a>            <span class="self">self</span>.name.as_str()
+<a href=#678 id=678 data-nosnippet>678</a>        }
+<a href=#679 id=679 data-nosnippet>679</a>        <span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#680 id=680 data-nosnippet>680</a>        </span>{
+<a href=#681 id=681 data-nosnippet>681</a>            <span class="comment">// Can never be reached because `TimeZoneName` cannot currently
+<a href=#682 id=682 data-nosnippet>682</a>            // be constructed in core-only environments.
+<a href=#683 id=683 data-nosnippet>683</a>            </span><span class="macro">unreachable!</span>()
+<a href=#684 id=684 data-nosnippet>684</a>        }
+<a href=#685 id=685 data-nosnippet>685</a>    }
+<a href=#686 id=686 data-nosnippet>686</a>}
+<a href=#687 id=687 data-nosnippet>687</a>
+<a href=#688 id=688 data-nosnippet>688</a><span class="kw">impl</span>&lt;<span class="lifetime">'d</span>&gt; core::fmt::Display <span class="kw">for </span>TimeZoneName&lt;<span class="lifetime">'d</span>&gt; {
+<a href=#689 id=689 data-nosnippet>689</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter) -&gt; core::fmt::Result {
+<a href=#690 id=690 data-nosnippet>690</a>        <span class="macro">write!</span>(f, <span class="string">"{}"</span>, <span class="self">self</span>.as_str())
+<a href=#691 id=691 data-nosnippet>691</a>    }
+<a href=#692 id=692 data-nosnippet>692</a>}
 <a href=#693 id=693 data-nosnippet>693</a>
-<a href=#694 id=694 data-nosnippet>694</a>    <span class="doccomment">/// This tests that the size of a time zone database is kept at a single
-<a href=#695 id=695 data-nosnippet>695</a>    /// word.
-<a href=#696 id=696 data-nosnippet>696</a>    ///
-<a href=#697 id=697 data-nosnippet>697</a>    /// I think it would probably be okay to make this bigger if we had a
-<a href=#698 id=698 data-nosnippet>698</a>    /// good reason to, but it seems sensible to put a road-block to avoid
-<a href=#699 id=699 data-nosnippet>699</a>    /// accidentally increasing its size.
-<a href=#700 id=700 data-nosnippet>700</a>    </span><span class="attr">#[test]
-<a href=#701 id=701 data-nosnippet>701</a>    </span><span class="kw">fn </span>time_zone_database_size() {
-<a href=#702 id=702 data-nosnippet>702</a>        <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
-<a href=#703 id=703 data-nosnippet>703</a>        </span>{
-<a href=#704 id=704 data-nosnippet>704</a>            <span class="kw">let </span>word = core::mem::size_of::&lt;usize&gt;();
-<a href=#705 id=705 data-nosnippet>705</a>            <span class="macro">assert_eq!</span>(word, core::mem::size_of::&lt;TimeZoneDatabase&gt;());
-<a href=#706 id=706 data-nosnippet>706</a>        }
-<a href=#707 id=707 data-nosnippet>707</a>        <span class="comment">// A `TimeZoneDatabase` in core-only is vapid.
-<a href=#708 id=708 data-nosnippet>708</a>        </span><span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
-<a href=#709 id=709 data-nosnippet>709</a>        </span>{
-<a href=#710 id=710 data-nosnippet>710</a>            <span class="macro">assert_eq!</span>(<span class="number">1</span>, core::mem::size_of::&lt;TimeZoneDatabase&gt;());
-<a href=#711 id=711 data-nosnippet>711</a>        }
-<a href=#712 id=712 data-nosnippet>712</a>    }
-<a href=#713 id=713 data-nosnippet>713</a>}</code></pre></div></section></main></body></html>
+<a href=#694 id=694 data-nosnippet>694</a><span class="doccomment">/// Checks if `name` is a "special" time zone and returns one if so.
+<a href=#695 id=695 data-nosnippet>695</a>///
+<a href=#696 id=696 data-nosnippet>696</a>/// This is limited to special constants that should have consistent values
+<a href=#697 id=697 data-nosnippet>697</a>/// across time zone database implementations. For example, `UTC`.
+<a href=#698 id=698 data-nosnippet>698</a></span><span class="kw">fn </span>special_time_zone(name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Option</span>&lt;TimeZone&gt; {
+<a href=#699 id=699 data-nosnippet>699</a>    <span class="kw">if </span>utf8::cmp_ignore_ascii_case(<span class="string">"utc"</span>, name).is_eq() {
+<a href=#700 id=700 data-nosnippet>700</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(TimeZone::UTC);
+<a href=#701 id=701 data-nosnippet>701</a>    }
+<a href=#702 id=702 data-nosnippet>702</a>    <span class="kw">if </span>utf8::cmp_ignore_ascii_case(<span class="string">"etc/unknown"</span>, name).is_eq() {
+<a href=#703 id=703 data-nosnippet>703</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(TimeZone::unknown());
+<a href=#704 id=704 data-nosnippet>704</a>    }
+<a href=#705 id=705 data-nosnippet>705</a>    <span class="prelude-val">None
+<a href=#706 id=706 data-nosnippet>706</a></span>}
+<a href=#707 id=707 data-nosnippet>707</a>
+<a href=#708 id=708 data-nosnippet>708</a><span class="attr">#[cfg(test)]
+<a href=#709 id=709 data-nosnippet>709</a></span><span class="kw">mod </span>tests {
+<a href=#710 id=710 data-nosnippet>710</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#711 id=711 data-nosnippet>711</a>
+<a href=#712 id=712 data-nosnippet>712</a>    <span class="doccomment">/// This tests that the size of a time zone database is kept at a single
+<a href=#713 id=713 data-nosnippet>713</a>    /// word.
+<a href=#714 id=714 data-nosnippet>714</a>    ///
+<a href=#715 id=715 data-nosnippet>715</a>    /// I think it would probably be okay to make this bigger if we had a
+<a href=#716 id=716 data-nosnippet>716</a>    /// good reason to, but it seems sensible to put a road-block to avoid
+<a href=#717 id=717 data-nosnippet>717</a>    /// accidentally increasing its size.
+<a href=#718 id=718 data-nosnippet>718</a>    </span><span class="attr">#[test]
+<a href=#719 id=719 data-nosnippet>719</a>    </span><span class="kw">fn </span>time_zone_database_size() {
+<a href=#720 id=720 data-nosnippet>720</a>        <span class="attr">#[cfg(feature = <span class="string">"alloc"</span>)]
+<a href=#721 id=721 data-nosnippet>721</a>        </span>{
+<a href=#722 id=722 data-nosnippet>722</a>            <span class="kw">let </span>word = core::mem::size_of::&lt;usize&gt;();
+<a href=#723 id=723 data-nosnippet>723</a>            <span class="macro">assert_eq!</span>(word, core::mem::size_of::&lt;TimeZoneDatabase&gt;());
+<a href=#724 id=724 data-nosnippet>724</a>        }
+<a href=#725 id=725 data-nosnippet>725</a>        <span class="comment">// A `TimeZoneDatabase` in core-only is vapid.
+<a href=#726 id=726 data-nosnippet>726</a>        </span><span class="attr">#[cfg(not(feature = <span class="string">"alloc"</span>))]
+<a href=#727 id=727 data-nosnippet>727</a>        </span>{
+<a href=#728 id=728 data-nosnippet>728</a>            <span class="macro">assert_eq!</span>(<span class="number">1</span>, core::mem::size_of::&lt;TimeZoneDatabase&gt;());
+<a href=#729 id=729 data-nosnippet>729</a>        }
+<a href=#730 id=730 data-nosnippet>730</a>    }
+<a href=#731 id=731 data-nosnippet>731</a>
+<a href=#732 id=732 data-nosnippet>732</a>    <span class="doccomment">/// Time zone databases should always return `TimeZone::UTC` if the time
+<a href=#733 id=733 data-nosnippet>733</a>    /// zone is known to be UTC.
+<a href=#734 id=734 data-nosnippet>734</a>    ///
+<a href=#735 id=735 data-nosnippet>735</a>    /// Regression test for: https://github.com/BurntSushi/jiff/issues/346
+<a href=#736 id=736 data-nosnippet>736</a>    </span><span class="attr">#[test]
+<a href=#737 id=737 data-nosnippet>737</a>    </span><span class="kw">fn </span>bundled_returns_utc_constant() {
+<a href=#738 id=738 data-nosnippet>738</a>        <span class="kw">let </span>db = TimeZoneDatabase::bundled();
+<a href=#739 id=739 data-nosnippet>739</a>        <span class="kw">if </span>db.is_definitively_empty() {
+<a href=#740 id=740 data-nosnippet>740</a>            <span class="kw">return</span>;
+<a href=#741 id=741 data-nosnippet>741</a>        }
+<a href=#742 id=742 data-nosnippet>742</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"UTC"</span>).unwrap(), TimeZone::UTC);
+<a href=#743 id=743 data-nosnippet>743</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"utc"</span>).unwrap(), TimeZone::UTC);
+<a href=#744 id=744 data-nosnippet>744</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"uTc"</span>).unwrap(), TimeZone::UTC);
+<a href=#745 id=745 data-nosnippet>745</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"UtC"</span>).unwrap(), TimeZone::UTC);
+<a href=#746 id=746 data-nosnippet>746</a>
+<a href=#747 id=747 data-nosnippet>747</a>        <span class="comment">// Also, similarly, for `Etc/Unknown`.
+<a href=#748 id=748 data-nosnippet>748</a>        </span><span class="macro">assert_eq!</span>(db.get(<span class="string">"Etc/Unknown"</span>).unwrap(), TimeZone::unknown());
+<a href=#749 id=749 data-nosnippet>749</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"etc/UNKNOWN"</span>).unwrap(), TimeZone::unknown());
+<a href=#750 id=750 data-nosnippet>750</a>    }
+<a href=#751 id=751 data-nosnippet>751</a>
+<a href=#752 id=752 data-nosnippet>752</a>    <span class="doccomment">/// Time zone databases should always return `TimeZone::UTC` if the time
+<a href=#753 id=753 data-nosnippet>753</a>    /// zone is known to be UTC.
+<a href=#754 id=754 data-nosnippet>754</a>    ///
+<a href=#755 id=755 data-nosnippet>755</a>    /// Regression test for: https://github.com/BurntSushi/jiff/issues/346
+<a href=#756 id=756 data-nosnippet>756</a>    </span><span class="attr">#[cfg(all(feature = <span class="string">"std"</span>, not(miri)))]
+<a href=#757 id=757 data-nosnippet>757</a>    #[test]
+<a href=#758 id=758 data-nosnippet>758</a>    </span><span class="kw">fn </span>zoneinfo_returns_utc_constant() {
+<a href=#759 id=759 data-nosnippet>759</a>        <span class="kw">let </span><span class="prelude-val">Ok</span>(db) = TimeZoneDatabase::from_dir(<span class="string">"/usr/share/zoneinfo"</span>) <span class="kw">else </span>{
+<a href=#760 id=760 data-nosnippet>760</a>            <span class="kw">return</span>;
+<a href=#761 id=761 data-nosnippet>761</a>        };
+<a href=#762 id=762 data-nosnippet>762</a>        <span class="kw">if </span>db.is_definitively_empty() {
+<a href=#763 id=763 data-nosnippet>763</a>            <span class="kw">return</span>;
+<a href=#764 id=764 data-nosnippet>764</a>        }
+<a href=#765 id=765 data-nosnippet>765</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"UTC"</span>).unwrap(), TimeZone::UTC);
+<a href=#766 id=766 data-nosnippet>766</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"utc"</span>).unwrap(), TimeZone::UTC);
+<a href=#767 id=767 data-nosnippet>767</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"uTc"</span>).unwrap(), TimeZone::UTC);
+<a href=#768 id=768 data-nosnippet>768</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"UtC"</span>).unwrap(), TimeZone::UTC);
+<a href=#769 id=769 data-nosnippet>769</a>
+<a href=#770 id=770 data-nosnippet>770</a>        <span class="comment">// Also, similarly, for `Etc/Unknown`.
+<a href=#771 id=771 data-nosnippet>771</a>        </span><span class="macro">assert_eq!</span>(db.get(<span class="string">"Etc/Unknown"</span>).unwrap(), TimeZone::unknown());
+<a href=#772 id=772 data-nosnippet>772</a>        <span class="macro">assert_eq!</span>(db.get(<span class="string">"etc/UNKNOWN"</span>).unwrap(), TimeZone::unknown());
+<a href=#773 id=773 data-nosnippet>773</a>    }
+<a href=#774 id=774 data-nosnippet>774</a>}</code></pre></div></section></main></body></html>

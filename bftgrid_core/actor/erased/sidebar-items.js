@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"trait":["ActorRef"],"type":["DynActorRef","DynFuture","DynLazy"]};
