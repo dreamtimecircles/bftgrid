@@ -122,6 +122,8 @@ struct SimulatedActor<MsgT> {
     node_id: Arc<String>,
     name: Arc<String>,
     events_buffer: Arc<Mutex<Vec<InternalEvent>>>,
+    topology: Arc<Mutex<Topology>>,
+    tokio_runtime: Arc<tokio::runtime::Runtime>,
     message_type: PhantomData<MsgT>,
 }
 
@@ -159,6 +161,34 @@ where
             event: Box::new(message),
             delay,
         });
+    }
+
+    fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+        let actor = self.actor.lock().unwrap();
+        let mut topology = actor.topology.lock().unwrap();
+        let node = topology.get_mut(actor.node_id.as_ref()).unwrap();
+        node.all_handlers.insert(
+            actor.name.clone(),
+            Arc::new(Mutex::new(Some(Box::new(handler)))),
+        );
+    }
+
+    fn spawn_async_send(
+        &mut self,
+        f: impl Future<Output = MsgT> + 'static,
+        delay: Option<Duration>,
+    ) {
+        let runtime = self.actor.lock().unwrap().tokio_runtime.clone();
+        let res = runtime.block_on(f);
+        self.send(res, delay);
+    }
+
+    fn spawn_thread_blocking_send(
+        &mut self,
+        f: impl FnOnce() -> MsgT + Send + 'static,
+        delay: Option<Duration>,
+    ) {
+        self.send(f(), delay);
     }
 }
 
@@ -522,45 +552,11 @@ impl ActorSystemHandle for Simulation {
                 node_id: Arc::new(node_id_string),
                 name: name_arc2,
                 events_buffer: self.internal_events_buffer.clone(),
+                topology: self.topology.clone(),
+                tokio_runtime: self.tokio_runtime.clone(),
                 message_type: PhantomData {},
             })),
         }
-    }
-
-    fn set_handler<MsgT>(&self, actor_ref: &mut SimulatedActorRef<MsgT>, handler: MsgHandler<MsgT>)
-    where
-        MsgT: ActorMsg,
-    {
-        let mut topology = self.topology.lock().unwrap();
-        let actor = actor_ref.actor.lock().unwrap();
-        let node = topology.get_mut(actor.node_id.as_ref()).unwrap();
-        node.all_handlers.insert(
-            actor.name.clone(),
-            Arc::new(Mutex::new(Some(Box::new(handler)))),
-        );
-    }
-
-    fn spawn_async_send<MsgT>(
-        &self,
-        f: impl Future<Output = MsgT> + 'static,
-        mut actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static,
-    {
-        let res = self.tokio_runtime.block_on(f);
-        actor_ref.send(res, delay);
-    }
-
-    fn spawn_thread_blocking_send<MsgT>(
-        &self,
-        f: impl FnOnce() -> MsgT + Send + 'static,
-        mut actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static,
-    {
-        actor_ref.send(f(), delay);
     }
 }
 

@@ -163,31 +163,6 @@ impl AsyncRuntime {
         }
     }
 
-    pub fn spawn_async_send<MsgT>(
-        &self,
-        f: impl Future<Output = MsgT> + Send + 'static,
-        mut actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) -> ::tokio::task::JoinHandle<()>
-    where
-        MsgT: ActorMsg + 'static,
-    {
-        match ::tokio::runtime::Handle::try_current() {
-            Ok(handle) => handle.spawn(async move {
-                actor_ref.send(f.await, delay);
-            }),
-            _ => self
-                .tokio
-                .read()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .spawn(async move {
-                    actor_ref.send(f.await, delay);
-                }),
-        }
-    }
-
     /// Spawn an async task that may allocate an executor thread
     ///  to execute a possibly long-running and thread-blocking
     ///  function to completion, then sending the result to the
