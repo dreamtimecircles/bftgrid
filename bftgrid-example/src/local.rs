@@ -60,32 +60,24 @@ where
 }
 
 #[derive(Debug)]
-struct Actor2<Actor1ActorSystemT, Actor1RefT>
+struct Actor2<Actor1RefT>
 where
-    Actor1ActorSystemT: ActorSystemHandle,
     Actor1RefT: ActorRef<Ping>,
 {
-    _p1: PhantomData<Actor1ActorSystemT>,
-    _p2: PhantomData<Actor1RefT>,
+    _p: PhantomData<Actor1RefT>,
 }
 
-impl<Actor1ActorSystemT, Actor1RefT> Actor2<Actor1ActorSystemT, Actor1RefT>
+impl<Actor1RefT> Actor2<Actor1RefT>
 where
-    Actor1ActorSystemT: ActorSystemHandle,
     Actor1RefT: ActorRef<Ping>,
 {
     fn new() -> Self {
-        Actor2 {
-            _p1: PhantomData {},
-            _p2: PhantomData {},
-        }
+        Actor2 { _p: PhantomData {} }
     }
 }
 
-impl<Actor1ActorSystemT, Actor1RefT> TypedMsgHandler<Actor1ToActor2<Actor1RefT>>
-    for Actor2<Actor1ActorSystemT, Actor1RefT>
+impl<Actor1RefT> TypedMsgHandler<Actor1ToActor2<Actor1RefT>> for Actor2<Actor1RefT>
 where
-    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor1RefT: ActorRef<Ping> + 'static,
 {
     fn receive(&mut self, mut msg: Actor1ToActor2<Actor1RefT>) -> Option<ActorControl> {
@@ -206,10 +198,7 @@ where
     let actor2_ref_copy = actor2_ref.clone();
     actor2_actor_system.set_handler(
         &mut actor2_ref,
-        Box::new(Actor2::<
-            Actor1ActorSystemT,
-            Actor1ActorSystemT::ActorRefT<Ping>,
-        >::new()),
+        Box::new(Actor2::<Actor1ActorSystemT::ActorRefT<Ping>>::new()),
     );
     actor1_actor_system.set_handler(
         &mut actor1_ref,
