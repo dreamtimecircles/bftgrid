@@ -102,6 +102,20 @@ where
     MsgT: ActorMsg + 'static,
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>);
+
+    fn set_handler(&mut self, handler: MsgHandler<MsgT>);
+
+    fn spawn_async_send(
+        &mut self,
+        f: impl Future<Output = MsgT> + Send + 'static,
+        delay: Option<Duration>,
+    );
+
+    fn spawn_thread_blocking_send(
+        &mut self,
+        f: impl FnOnce() -> MsgT + Send + 'static,
+        delay: Option<Duration>,
+    );
 }
 
 /// An [`ActorSystemHandle`] allows spawning actors by creating an [`ActorRef`] and setting its handler.
@@ -121,26 +135,6 @@ pub trait ActorSystemHandle: Clone {
     ) -> Self::ActorRefT<MsgT>
     where
         MsgT: ActorMsg;
-
-    fn set_handler<MsgT>(&self, actor_ref: &mut Self::ActorRefT<MsgT>, handler: MsgHandler<MsgT>)
-    where
-        MsgT: ActorMsg;
-
-    fn spawn_async_send<MsgT>(
-        &self,
-        f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static;
-
-    fn spawn_thread_blocking_send<MsgT>(
-        &self,
-        f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static;
 }
 
 #[derive(Error, Debug, Clone)]

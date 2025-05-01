@@ -74,12 +74,11 @@ where
             }
             1 => {
                 log::info!("Actor1 received second ping, self-pinging after async work");
-                self.actor_system.spawn_async_send(
+                self.self_ref.spawn_async_send(
                     async {
                         log::info!("Actor1 doing async work");
                         Ping()
                     },
-                    self.self_ref.clone(),
                     None,
                 );
                 None
@@ -94,17 +93,14 @@ where
                         false,
                     );
                     log::info!("Actor1 setting handler");
-                    self.actor_system.set_handler(
-                        &mut new_ref,
-                        Box::new(Actor1 {
-                            self_ref: self.self_ref.clone(),
-                            node_id: self.node_id.clone(),
-                            actor_system: self.actor_system.clone(),
-                            network_out: self.network_out.clone(),
-                            ping_count: 3,
-                            spawn_count: self.spawn_count + 1,
-                        }),
-                    );
+                    new_ref.set_handler(Box::new(Actor1 {
+                        self_ref: self.self_ref.clone(),
+                        node_id: self.node_id.clone(),
+                        actor_system: self.actor_system.clone(),
+                        network_out: self.network_out.clone(),
+                        ping_count: 3,
+                        spawn_count: self.spawn_count + 1,
+                    }));
                     log::info!("Actor1 sending to spawned actor");
                     new_ref.send(Ping(), None);
                     log::info!("Actor1 done");
@@ -188,17 +184,14 @@ async fn main() {
     let mut actor1_ref: bftgrid_mt::tokio::TokioActorRef<Ping> =
         tokio_actor_system.create("node1", "actor1", false);
     let actor1_ref_copy = actor1_ref.clone();
-    tokio_actor_system.set_handler(
-        &mut actor1_ref,
-        Box::new(Actor1::new(
-            actor1_ref_copy,
-            "node1",
-            tokio_actor_system.clone(),
-            network1.clone(),
-        )),
-    );
+    actor1_ref.set_handler(Box::new(Actor1::new(
+        actor1_ref_copy,
+        "node1",
+        tokio_actor_system.clone(),
+        network1.clone(),
+    )));
     let mut actor2_ref = thread_actor_system.create("node2", "actor2", false);
-    thread_actor_system.set_handler(&mut actor2_ref, Box::new(Actor2::new(network2.clone())));
+    actor2_ref.set_handler(Box::new(Actor2::new(network2.clone())));
     let node1 = TokioP2PNetworkServer::new(
         "node1",
         async_runtime.block_on_async(async {
@@ -277,17 +270,14 @@ mod tests {
         let simulation = Simulation::new(topology, start, start.add(Duration::from_secs(100)));
         let mut actor1_ref = simulation.create("localhost:5001", "actor1", false);
         let actor1_ref_copy = actor1_ref.clone();
-        simulation.set_handler(
-            &mut actor1_ref,
-            Box::new(Actor1::new(
-                actor1_ref_copy,
-                "localhost:5001",
-                simulation.clone(),
-                simulation.clone(),
-            )),
-        );
+        actor1_ref.set_handler(Box::new(Actor1::new(
+            actor1_ref_copy,
+            "localhost:5001",
+            simulation.clone(),
+            simulation.clone(),
+        )));
         let mut actor2_ref = simulation.create("localhost:5002", "actor2", false);
-        simulation.set_handler(&mut actor2_ref, Box::new(Actor2::new(simulation.clone())));
+        actor2_ref.set_handler(Box::new(Actor2::new(simulation.clone())));
         actor1_ref.send(Ping(), None);
         let history = simulation.run();
         log::info!("{:?}", history);

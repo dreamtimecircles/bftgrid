@@ -118,12 +118,11 @@ where
             }
             1 => {
                 log::info!("Actor1 received second ping, self-pinging after async work");
-                self.actor_system.spawn_async_send(
+                self.self_ref.spawn_async_send(
                     async move {
                         log::info!("Actor1 simulating async work");
                         Ping()
                     },
-                    self.self_ref.clone(),
                     None,
                 );
                 None
@@ -139,17 +138,14 @@ where
                         false,
                     );
                     log::info!("Actor1 setting handler");
-                    self.actor_system.set_handler(
-                        &mut new_ref,
-                        Box::new(Actor1 {
-                            self_ref: self.self_ref.clone(),
-                            node_id: self.node_id.clone(),
-                            actor_system: self.actor_system.clone(),
-                            actor2_ref: self.actor2_ref.clone(),
-                            ping_count: 3,
-                            spawn_count: self.spawn_count + 1,
-                        }),
-                    );
+                    new_ref.set_handler(Box::new(Actor1 {
+                        self_ref: self.self_ref.clone(),
+                        node_id: self.node_id.clone(),
+                        actor_system: self.actor_system.clone(),
+                        actor2_ref: self.actor2_ref.clone(),
+                        ping_count: 3,
+                        spawn_count: self.spawn_count + 1,
+                    }));
                     log::info!("Actor1 sending");
                     new_ref.send(Ping(), None);
                     log::info!("Actor1 done");
@@ -204,22 +200,16 @@ where
     let actor1_ref_copy = actor1_ref.clone();
     let mut actor2_ref = actor2_actor_system.create("node", "actor2", false);
     let actor2_ref_copy = actor2_ref.clone();
-    actor2_actor_system.set_handler(
-        &mut actor2_ref,
-        Box::new(Actor2::<
-            Actor1ActorSystemT,
-            Actor1ActorSystemT::ActorRefT<Ping>,
-        >::new()),
-    );
-    actor1_actor_system.set_handler(
-        &mut actor1_ref,
-        Box::new(Actor1::new(
-            actor1_ref_copy,
-            "node",
-            actor1_actor_system.clone(),
-            actor2_ref_copy,
-        )),
-    );
+    actor2_ref.set_handler(Box::new(Actor2::<
+        Actor1ActorSystemT,
+        Actor1ActorSystemT::ActorRefT<Ping>,
+    >::new()));
+    actor1_ref.set_handler(Box::new(Actor1::new(
+        actor1_ref_copy,
+        "node",
+        actor1_actor_system.clone(),
+        actor2_ref_copy,
+    )));
     System::new(actor1_ref, actor2_ref)
 }
 

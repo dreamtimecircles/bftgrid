@@ -10,15 +10,15 @@ use std::{
     time::Duration,
 };
 
-use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, MsgHandler, Task,
-};
-use tokio::runtime::Runtime;
-
 use crate::{
     cleanup_complete_tasks, join_tasks, notify_close, push_async_task, AsyncRuntime,
     ThreadJoinable, TokioTask,
 };
+use bftgrid_core::actor::{
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, MsgHandler, Task,
+};
+use tokio::runtime::Runtime;
+use tokio::task::JoinHandle as TokioJoinHandle;
 
 #[derive(Debug)]
 pub struct ThreadActorData<MsgT>
@@ -37,7 +37,7 @@ where
     MsgT: ActorMsg,
 {
     data: ThreadActorData<MsgT>,
-    actor_system: ThreadActorSystemHandle,
+    actor_system_handle: ThreadActorSystemHandle,
     join_on_drop: bool,
 }
 
@@ -121,15 +121,52 @@ where
     fn send(&mut self, message: MsgT, delay: Option<Duration>) {
         let sender = self.actor.data.tx.clone();
         if let Some(delay_duration) = delay {
-            self.actor.actor_system.spawn_thread_blocking_task(move || {
-                log::debug!("Delaying send by {:?}", delay_duration);
-                thread::sleep(delay_duration);
-                checked_send(sender, message);
-            });
+            self.actor
+                .actor_system_handle
+                .spawn_thread_blocking_task(move || {
+                    log::debug!("Delaying send by {:?}", delay_duration);
+                    thread::sleep(delay_duration);
+                    checked_send(sender, message);
+                });
         } else {
             // No need to spawn a thread if no delay is needed, as the sender is non-blocking
             checked_send(sender, message);
         }
+    }
+
+    fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+        self.actor
+            .data
+            .handler_tx
+            .send(Arc::new(Mutex::new(handler)))
+            .unwrap();
+    }
+
+    fn spawn_async_send(
+        &mut self,
+        f: impl Future<Output = MsgT> + Send + 'static,
+        delay: Option<Duration>,
+    ) {
+        let mut self_clone = self.clone();
+        let mut actor_system_lock_guard =
+            self.actor.actor_system_handle.actor_system.lock().unwrap();
+        let async_runtime = actor_system_lock_guard.async_runtime.clone();
+        actor_system_lock_guard.push_async_task(async_runtime.spawn_async(async move {
+            self_clone.send(f.await, delay);
+        }));
+    }
+
+    fn spawn_thread_blocking_send(
+        &mut self,
+        f: impl FnOnce() -> MsgT + Send + 'static,
+        delay: Option<Duration>,
+    ) {
+        let self_clone = self.clone();
+        let mut actor_system_lock_guard =
+            self.actor.actor_system_handle.actor_system.lock().unwrap();
+        let async_runtime = actor_system_lock_guard.async_runtime.clone();
+        actor_system_lock_guard
+            .push_async_task(async_runtime.spawn_thread_blocking_send(f, self_clone, delay));
     }
 }
 
@@ -219,45 +256,8 @@ impl ThreadActorSystem {
         }
     }
 
-    fn set_handler<MsgT>(&mut self, actor_ref: &mut ThreadActorRef<MsgT>, handler: MsgHandler<MsgT>)
-    where
-        MsgT: ActorMsg,
-    {
-        actor_ref
-            .actor
-            .data
-            .handler_tx
-            .send(Arc::new(Mutex::new(handler)))
-            .unwrap();
-    }
-
-    fn spawn_async_send<MsgT>(
-        &mut self,
-        f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static,
-    {
-        push_async_task(
-            &mut self.async_tasks,
-            self.async_runtime.spawn_async_send(f, actor_ref, delay),
-        );
-    }
-
-    fn spawn_thread_blocking_send<MsgT>(
-        &mut self,
-        f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static,
-    {
-        push_async_task(
-            &mut self.async_tasks,
-            self.async_runtime
-                .spawn_thread_blocking_send(f, actor_ref, delay),
-        );
+    fn push_async_task(&mut self, tokio_join_handle: TokioJoinHandle<()>) {
+        push_async_task(&mut self.async_tasks, tokio_join_handle);
     }
 }
 
@@ -334,48 +334,10 @@ impl ActorSystemHandle for ThreadActorSystemHandle {
         ThreadActorRef {
             actor: Arc::new(ThreadActor {
                 data: self.actor_system.lock().unwrap().create(name, node_id),
-                actor_system: self.clone(),
+                actor_system_handle: self.clone(),
                 join_on_drop,
             }),
         }
-    }
-
-    fn set_handler<MsgT>(&self, actor_ref: &mut Self::ActorRefT<MsgT>, handler: MsgHandler<MsgT>)
-    where
-        MsgT: ActorMsg,
-    {
-        self.actor_system
-            .lock()
-            .unwrap()
-            .set_handler(actor_ref, handler);
-    }
-
-    fn spawn_async_send<MsgT>(
-        &self,
-        f: impl Future<Output = MsgT> + Send + 'static,
-        actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static,
-    {
-        self.actor_system
-            .lock()
-            .unwrap()
-            .spawn_async_send(f, actor_ref, delay);
-    }
-
-    fn spawn_thread_blocking_send<MsgT>(
-        &self,
-        f: impl FnOnce() -> MsgT + Send + 'static,
-        actor_ref: impl ActorRef<MsgT> + 'static,
-        delay: Option<Duration>,
-    ) where
-        MsgT: ActorMsg + 'static,
-    {
-        self.actor_system
-            .lock()
-            .unwrap()
-            .spawn_thread_blocking_send(f, actor_ref, delay);
     }
 }
 
