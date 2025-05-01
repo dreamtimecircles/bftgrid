@@ -19,14 +19,17 @@ where
     pub actor1_ref: Actor1RefT,
 }
 
-impl<Actor1RefT> ActorMsg for Actor1ToActor2<Actor1RefT> where Actor1RefT: ActorRef<Ping> + 'static {}
+impl<Actor1RefT> ActorMsg for Actor1ToActor2<Actor1RefT> where
+    Actor1RefT: ActorRef<Ping> + Clone + 'static
+{
+}
 
 #[derive(Debug)]
 struct Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
     ActorSystemT: ActorSystemHandle + 'static,
-    Actor1RefT: ActorRef<Ping> + 'static,
-    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>>,
+    Actor1RefT: ActorRef<Ping> + Clone + 'static,
+    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + Clone,
 {
     self_ref: Actor1RefT,
     node_id: String,
@@ -39,8 +42,8 @@ where
 impl<ActorSystemT, Actor1RefT, Actor2RefT> Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
     ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send,
-    Actor1RefT: ActorRef<Ping> + 'static,
-    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>>,
+    Actor1RefT: ActorRef<Ping> + Clone + 'static,
+    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + Clone,
 {
     fn new(
         self_ref: Actor1RefT,
@@ -78,7 +81,7 @@ where
 
 impl<Actor1RefT> TypedMsgHandler<Actor1ToActor2<Actor1RefT>> for Actor2<Actor1RefT>
 where
-    Actor1RefT: ActorRef<Ping> + 'static,
+    Actor1RefT: ActorRef<Ping> + Clone + 'static,
 {
     fn receive(&mut self, mut msg: Actor1ToActor2<Actor1RefT>) -> Option<ActorControl> {
         log::info!("Actor2 received ref, sending ping to it");
@@ -92,8 +95,8 @@ impl<ActorSystemT, Actor1RefT, Actor2RefT> TypedMsgHandler<Ping>
     for Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
     ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
-    Actor1RefT: ActorRef<Ping> + 'static,
-    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + 'static,
+    Actor1RefT: ActorRef<Ping> + Clone + 'static,
+    Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + Clone + 'static,
 {
     fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
@@ -155,6 +158,7 @@ struct System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystemHandle + 'static,
+    Actor1ActorSystemT::ActorRefT<Ping>: Clone,
 {
     actor1_ref: Actor1ActorSystemT::ActorRefT<Ping>,
     actor2_ref: Actor2ActorSystemT::ActorRefT<Actor1ToActor2<Actor1ActorSystemT::ActorRefT<Ping>>>,
@@ -165,6 +169,7 @@ impl<Actor1ActorSystemT, Actor2ActorSystemT> System<Actor1ActorSystemT, Actor2Ac
 where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystemHandle + 'static,
+    Actor1ActorSystemT::ActorRefT<Ping>: Clone,
 {
     fn new(
         actor1_ref: Actor1ActorSystemT::ActorRefT<Ping>,
@@ -187,6 +192,8 @@ fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
 where
     Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
     Actor2ActorSystemT: ActorSystemHandle + 'static,
+    Actor1ActorSystemT::ActorRefT<Ping>: Clone,
+    Actor2ActorSystemT::ActorRefT<Actor1ToActor2<Actor1ActorSystemT::ActorRefT<Ping>>>: Clone,
 {
     let mut actor1_ref = actor1_actor_system.create("node", "actor1", false);
     let actor1_ref_copy = actor1_ref.clone();

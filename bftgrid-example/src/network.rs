@@ -3,8 +3,8 @@ mod utils;
 use std::any::Any;
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, Joinable, MessageNotSupported,
-    P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
+    erased::DynActorRef, ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, Joinable,
+    MessageNotSupported, P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
 };
 
 use bftgrid_mt::{
@@ -19,13 +19,12 @@ struct Ping();
 impl ActorMsg for Ping {}
 
 #[derive(Debug)]
-struct Actor1<ActorSystemT, P2PNetworkT, Actor1RefT>
+struct Actor1<ActorSystemT, P2PNetworkT>
 where
     ActorSystemT: ActorSystemHandle + 'static,
     P2PNetworkT: P2PNetworkClient,
-    Actor1RefT: ActorRef<Ping>,
 {
-    self_ref: Actor1RefT,
+    self_ref: DynActorRef<Ping>,
     node_id: String,
     actor_system: ActorSystemT,
     network_out: P2PNetworkT,
@@ -33,18 +32,17 @@ where
     spawn_count: u8,
 }
 
-impl<ActorSystemT, P2PNetworkT, Actor1RefT> Actor1<ActorSystemT, P2PNetworkT, Actor1RefT>
+impl<ActorSystemT, P2PNetworkT> Actor1<ActorSystemT, P2PNetworkT>
 where
     ActorSystemT: ActorSystemHandle,
     P2PNetworkT: P2PNetworkClient,
-    Actor1RefT: ActorRef<Ping>,
 {
     fn new(
-        self_ref: Actor1RefT,
+        self_ref: DynActorRef<Ping>,
         node_id: impl Into<String>,
         actor_system: ActorSystemT,
         network_out: P2PNetworkT,
-    ) -> Actor1<ActorSystemT, P2PNetworkT, Actor1RefT> {
+    ) -> Actor1<ActorSystemT, P2PNetworkT> {
         Actor1 {
             self_ref,
             node_id: node_id.into(),
@@ -56,12 +54,10 @@ where
     }
 }
 
-impl<ActorSystemT, P2PNetworkT, Actor1RefT> TypedMsgHandler<Ping>
-    for Actor1<ActorSystemT, P2PNetworkT, Actor1RefT>
+impl<ActorSystemT, P2PNetworkT> TypedMsgHandler<Ping> for Actor1<ActorSystemT, P2PNetworkT>
 where
     ActorSystemT: ActorSystemHandle + Send + std::fmt::Debug + 'static,
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
-    Actor1RefT: ActorRef<Ping> + Send + std::fmt::Debug + 'static,
 {
     fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
         let ret = match self.ping_count {
@@ -75,10 +71,10 @@ where
             1 => {
                 log::info!("Actor1 received second ping, self-pinging after async work");
                 self.self_ref.spawn_async_send(
-                    async {
+                    Box::pin(async {
                         log::info!("Actor1 doing async work");
                         Ping()
-                    },
+                    }),
                     None,
                 );
                 None
@@ -185,7 +181,7 @@ async fn main() {
         tokio_actor_system.create("node1", "actor1", false);
     let actor1_ref_copy = actor1_ref.clone();
     actor1_ref.set_handler(Box::new(Actor1::new(
-        actor1_ref_copy,
+        Box::new(actor1_ref_copy),
         "node1",
         tokio_actor_system.clone(),
         network1.clone(),
@@ -271,7 +267,7 @@ mod tests {
         let mut actor1_ref = simulation.create("localhost:5001", "actor1", false);
         let actor1_ref_copy = actor1_ref.clone();
         actor1_ref.set_handler(Box::new(Actor1::new(
-            actor1_ref_copy,
+            Box::new(actor1_ref_copy),
             "localhost:5001",
             simulation.clone(),
             simulation.clone(),

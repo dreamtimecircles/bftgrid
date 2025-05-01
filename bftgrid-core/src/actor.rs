@@ -3,7 +3,7 @@
 //! Every actor is managed by a single actor system but can interact with actors managed by other actor systems.
 //!
 //! No async signatures are used in the public API in order to support single-threaded simulation testing without relying on async runtimes.
-//! Actors should not assume anything about the thread they are running on, nor use any async runtime. They must rely on actor system facilities
+//! Actors should not assume anything about the thread they are running on, nor use any async runtime. They must rely on special functions
 //! to execute thread-blocking and async tasks.
 
 use std::{
@@ -50,6 +50,8 @@ impl Error for MessageNotSupported {}
 
 pub type AnActorMsg = Box<dyn ActorMsg>;
 
+impl ActorMsg for AnActorMsg {}
+
 /// An [`UntypedMsgHandler`] is an actor handler that can receive messages of any type,
 ///  although it may refuse to handle some of them.
 pub trait UntypedMsgHandler: Send + Debug {
@@ -95,9 +97,10 @@ pub trait Joinable<Output>: Task + Send + Debug {
     fn join(&mut self) -> Output;
 }
 
-/// An [`ActorRef`] can asynchronously send messages to the underlying actor, optionally with a delay, and create new actor references.
+/// An [`ActorRef`] can asynchronously send messages to the underlying actor, optionally with a delay,
+///  change the actor handler, spawn an async self-send, spawn a thread-blocking self-send and it can be cloned.
 /// Actor implementations can use [`ActorRef`]s to send messages to themselves and to other actors.
-pub trait ActorRef<MsgT>: Clone + Send + Debug
+pub trait ActorRef<MsgT>: DynClone + Send + Debug
 where
     MsgT: ActorMsg + 'static,
 {
@@ -118,11 +121,9 @@ where
     );
 }
 
-/// An [`ActorSystemHandle`] allows spawning actors by creating an [`ActorRef`] and setting its handler.
-/// The handler of the underlying actor can also be changed at any time.
-/// An [`ActorSystemHandle`] can be cloned.
-/// Actors themselves can use [`ActorSystemHandle`]s to spawn new actors and even to change their own handlers.
-pub trait ActorSystemHandle: Clone {
+/// An [`ActorSystemHandle`] allows spawning actors by creating an [`ActorRef`] and it can be cloned.
+/// Actors themselves can use [`ActorSystemHandle`]s to spawn new actors.
+pub trait ActorSystemHandle: Clone + Send {
     type ActorRefT<MsgT>: ActorRef<MsgT>
     where
         MsgT: ActorMsg;
@@ -160,4 +161,91 @@ pub trait P2PNetworkClient: Clone {
     where
         MsgT: ActorMsg,
         SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync;
+}
+
+/// Erased versions
+pub mod erased {
+    use std::fmt::Debug;
+    use std::{pin::Pin, time::Duration};
+
+    use dyn_clone::DynClone;
+
+    use crate::actor;
+
+    use super::{ActorMsg, MsgHandler};
+
+    pub type DynFuture<MsgT> = Pin<Box<dyn Future<Output = MsgT> + Send + 'static>>;
+    pub type DynLazy<MsgT> = Box<dyn FnOnce() -> MsgT + Send + 'static>;
+
+    pub trait ActorRef<MsgT>: DynClone + Send + Debug
+    where
+        MsgT: ActorMsg + 'static,
+    {
+        fn send(&mut self, message: MsgT, delay: Option<Duration>);
+
+        fn set_handler(&mut self, handler: MsgHandler<MsgT>);
+
+        fn spawn_async_send(&mut self, f: DynFuture<MsgT>, delay: Option<Duration>);
+
+        fn spawn_thread_blocking_send(&mut self, f: DynLazy<MsgT>, delay: Option<Duration>);
+    }
+
+    pub type DynActorRef<MsgT> = Box<dyn ActorRef<MsgT>>;
+
+    impl<MsgT> Clone for DynActorRef<MsgT> {
+        fn clone(&self) -> Self {
+            dyn_clone::clone_box(&**self)
+        }
+    }
+
+    impl<ActorRefT, MsgT> ActorRef<MsgT> for ActorRefT
+    where
+        ActorRefT: actor::ActorRef<MsgT> + ?Sized,
+        MsgT: ActorMsg + 'static,
+    {
+        fn send(&mut self, message: MsgT, delay: Option<Duration>) {
+            self.send(message, delay);
+        }
+
+        fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+            self.set_handler(handler);
+        }
+
+        fn spawn_async_send(&mut self, f: DynFuture<MsgT>, delay: Option<Duration>) {
+            self.spawn_async_send(f, delay);
+        }
+
+        fn spawn_thread_blocking_send(&mut self, f: DynLazy<MsgT>, delay: Option<Duration>) {
+            self.spawn_thread_blocking_send(f, delay);
+        }
+    }
+
+    impl<MsgT> actor::ActorRef<MsgT> for dyn ActorRef<MsgT>
+    where
+        MsgT: ActorMsg + 'static,
+    {
+        fn send(&mut self, message: MsgT, delay: Option<Duration>) {
+            ActorRef::send(self, message, delay);
+        }
+
+        fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+            ActorRef::set_handler(self, handler);
+        }
+
+        fn spawn_async_send(
+            &mut self,
+            f: impl Future<Output = MsgT> + Send + 'static,
+            delay: Option<Duration>,
+        ) {
+            ActorRef::spawn_async_send(self, Box::pin(f), delay);
+        }
+
+        fn spawn_thread_blocking_send(
+            &mut self,
+            f: impl FnOnce() -> MsgT + Send + 'static,
+            delay: Option<Duration>,
+        ) {
+            ActorRef::spawn_thread_blocking_send(self, Box::new(f), delay);
+        }
+    }
 }
