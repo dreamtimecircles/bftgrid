@@ -94,7 +94,7 @@
 <a href=#94 id=94 data-nosnippet>94</a><span class="kw">impl</span>&lt;ActorSystemT, Actor1RefT, Actor2RefT&gt; TypedMsgHandler&lt;Ping&gt;
 <a href=#95 id=95 data-nosnippet>95</a>    <span class="kw">for </span>Actor1&lt;ActorSystemT, Actor1RefT, Actor2RefT&gt;
 <a href=#96 id=96 data-nosnippet>96</a><span class="kw">where
-<a href=#97 id=97 data-nosnippet>97</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#97 id=97 data-nosnippet>97</a>    </span>ActorSystemT: ActorSystemHandle + std::fmt::Debug + Clone + Send + <span class="lifetime">'static</span>,
 <a href=#98 id=98 data-nosnippet>98</a>    Actor1RefT: ActorRef&lt;Ping&gt; + Clone + <span class="lifetime">'static</span>,
 <a href=#99 id=99 data-nosnippet>99</a>    Actor2RefT: ActorRef&lt;Actor1ToActor2&lt;Actor1RefT&gt;&gt; + Clone + <span class="lifetime">'static</span>,
 <a href=#100 id=100 data-nosnippet>100</a>{
@@ -190,7 +190,7 @@
 <a href=#190 id=190 data-nosnippet>190</a>    actor2_actor_system: Actor2ActorSystemT,
 <a href=#191 id=191 data-nosnippet>191</a>) -&gt; System&lt;Actor1ActorSystemT, Actor2ActorSystemT&gt;
 <a href=#192 id=192 data-nosnippet>192</a><span class="kw">where
-<a href=#193 id=193 data-nosnippet>193</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + <span class="lifetime">'static</span>,
+<a href=#193 id=193 data-nosnippet>193</a>    </span>Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Clone + Send + <span class="lifetime">'static</span>,
 <a href=#194 id=194 data-nosnippet>194</a>    Actor2ActorSystemT: ActorSystemHandle + <span class="lifetime">'static</span>,
 <a href=#195 id=195 data-nosnippet>195</a>    Actor1ActorSystemT::ActorRefT&lt;Ping&gt;: Clone,
 <a href=#196 id=196 data-nosnippet>196</a>    Actor2ActorSystemT::ActorRefT&lt;Actor1ToActor2&lt;Actor1ActorSystemT::ActorRefT&lt;Ping&gt;&gt;&gt;: Clone,
