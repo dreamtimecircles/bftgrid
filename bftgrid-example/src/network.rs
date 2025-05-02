@@ -3,7 +3,7 @@ mod utils;
 use std::any::Any;
 
 use bftgrid_core::actor::{
-    erased::{DynActorRef, DynActorSystemHandle},
+    erased::{DynActorRef, DynActorSystemHandle, DynP2PNetworkClient},
     ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, Joinable, MessageNotSupported,
     P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
 };
@@ -19,28 +19,22 @@ use tokio::net::UdpSocket;
 struct Ping();
 impl ActorMsg for Ping {}
 
-struct Actor1<P2PNetworkT>
-where
-    P2PNetworkT: P2PNetworkClient,
-{
+struct Actor1 {
     self_ref: DynActorRef<AnActorMsg>,
     node_id: String,
     actor_system: DynActorSystemHandle,
-    network_out: P2PNetworkT,
+    network_out: DynP2PNetworkClient,
     ping_count: u8,
     spawn_count: u8,
 }
 
-impl<P2PNetworkT> Actor1<P2PNetworkT>
-where
-    P2PNetworkT: P2PNetworkClient,
-{
+impl Actor1 {
     fn new(
         self_ref: DynActorRef<AnActorMsg>,
         node_id: impl Into<String>,
         actor_system: DynActorSystemHandle,
-        network_out: P2PNetworkT,
-    ) -> Actor1<P2PNetworkT> {
+        network_out: DynP2PNetworkClient,
+    ) -> Actor1 {
         Actor1 {
             self_ref,
             node_id: node_id.into(),
@@ -52,10 +46,7 @@ where
     }
 }
 
-impl<P2PNetworkT> TypedMsgHandler<AnActorMsg> for Actor1<P2PNetworkT>
-where
-    P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
-{
+impl TypedMsgHandler<AnActorMsg> for Actor1 {
     fn receive(&mut self, msg: AnActorMsg) -> Option<ActorControl> {
         if (msg as Box<dyn Any>).downcast::<Ping>().is_ok() {
         } else {
@@ -65,7 +56,11 @@ where
             0 => {
                 log::info!("Actor1 received first ping, sending ping to Actor2 over the network");
                 let mut out = self.network_out.clone();
-                let _ = out.attempt_send(Ping {}, &|_msg| Ok(Vec::new()), "localhost:5002");
+                let _ = out.attempt_send(
+                    Box::new(Ping {}),
+                    Box::new(|_msg| Ok(Vec::new())),
+                    "localhost:5002".into(),
+                );
                 log::info!("Actor1 sent ping to Actor2 over the network");
                 None
             }
@@ -112,25 +107,25 @@ where
 }
 
 #[derive(Debug)]
-struct Actor2<P2PNetworkT>
+struct Actor2<P2PNetworkClientT>
 where
-    P2PNetworkT: P2PNetworkClient,
+    P2PNetworkClientT: P2PNetworkClient,
 {
-    network_out: P2PNetworkT,
+    network_out: P2PNetworkClientT,
 }
 
-impl<P2PNetworkT> Actor2<P2PNetworkT>
+impl<P2PNetworkClientT> Actor2<P2PNetworkClientT>
 where
-    P2PNetworkT: P2PNetworkClient,
+    P2PNetworkClientT: P2PNetworkClient,
 {
-    fn new(network_out: P2PNetworkT) -> Self {
+    fn new(network_out: P2PNetworkClientT) -> Self {
         Actor2 { network_out }
     }
 }
 
-impl<P2PNetworkT> TypedMsgHandler<AnActorMsg> for Actor2<P2PNetworkT>
+impl<P2PNetworkClientT> TypedMsgHandler<AnActorMsg> for Actor2<P2PNetworkClientT>
 where
-    P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
+    P2PNetworkClientT: P2PNetworkClient + Clone + Send + std::fmt::Debug + 'static,
 {
     fn receive(&mut self, msg: AnActorMsg) -> Option<ActorControl> {
         if (msg.clone() as Box<dyn Any>).downcast::<Ping>().is_ok() {
@@ -139,7 +134,7 @@ where
         }
         log::info!("Actor2 received ping over the network, replying with a ping over the network");
         let mut out = self.network_out.clone();
-        let _ = out.attempt_send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");
+        let _ = out.attempt_send(msg, |_msg| Ok(Vec::new()), "localhost:5001");
         log::info!("Actor2 sent ping reply, exiting");
         Some(ActorControl::Exit())
     }
@@ -168,8 +163,7 @@ where
 
 // Components that need a Tokio runtime will reuse the handle from the async context, if any,
 //  otherwise they will use an owned runtime.
-#[tokio::main]
-async fn main() {
+fn main() {
     utils::setup_logging(false);
     let async_runtime = AsyncRuntime::new("main", None);
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"], None);
@@ -184,7 +178,7 @@ async fn main() {
         Box::new(actor1_ref_copy),
         "node1",
         Box::new(tokio_actor_system.clone()),
-        network1.clone(),
+        Box::new(network1.clone()),
     )));
     let mut actor2_ref: bftgrid_mt::thread::ThreadActorRef<AnActorMsg> =
         thread_actor_system.create("node2", "actor2", false);
@@ -271,7 +265,7 @@ mod tests {
             Box::new(actor1_ref_copy),
             "localhost:5001",
             Box::new(simulation.clone()),
-            simulation.clone(),
+            Box::new(simulation.clone()),
         )));
         let mut actor2_ref = simulation.create("localhost:5002", "actor2", false);
         actor2_ref.set_handler(Box::new(Actor2::new(simulation.clone())));

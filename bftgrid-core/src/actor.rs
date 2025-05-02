@@ -35,7 +35,11 @@ where
     fn receive(&mut self, message: MsgT) -> Option<ActorControl>;
 }
 
-pub type MsgHandler<MsgT> = Box<dyn TypedMsgHandler<MsgT>>;
+pub type DynMsgHandler<MsgT> = Box<dyn TypedMsgHandler<MsgT>>;
+
+pub type AnActorMsg = Box<dyn ActorMsg>;
+
+impl ActorMsg for AnActorMsg {}
 
 #[derive(Debug, Clone)]
 pub struct MessageNotSupported();
@@ -48,10 +52,6 @@ impl Display for MessageNotSupported {
 
 impl Error for MessageNotSupported {}
 
-pub type AnActorMsg = Box<dyn ActorMsg>;
-
-impl ActorMsg for AnActorMsg {}
-
 /// An [`UntypedMsgHandler`] is an actor handler that can receive messages of any type,
 ///  although it may refuse to handle some of them.
 pub trait UntypedMsgHandler: Send {
@@ -62,35 +62,6 @@ pub trait UntypedMsgHandler: Send {
 }
 
 pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
-
-/// A blanket [`UntypedMsgHandler`] implementation for any [`MsgHandler<MsgT>`]
-///  to allow any boxed typed actor to be used as a network input actor.
-// The manual supertrait upcasting approach
-//  (https://quinedot.github.io/rust-learning/dyn-trait-combining.html#manual-supertrait-upcasting)
-//  would not work in this case due to the `MsgT` type parameter being
-//  method-bound rather than trait-bound in a blanket implementation for `T: TypedMsgHandler<MsgT>`.
-//  Somewhat sadly, this means that a generic [`UntypedMsgHandler`] must be costructed via a second level
-//  of boxing (`Box<dyn UntypedMsgHandler>`).
-impl<MsgT> UntypedMsgHandler for MsgHandler<MsgT>
-where
-    MsgT: ActorMsg,
-{
-    fn receive_untyped(
-        &mut self,
-        message: AnActorMsg,
-    ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match (message.clone() as Box<dyn Any>).downcast::<MsgT>() {
-            Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
-            Err(_) => {
-                // MsgT may be a trait object, so we retry after boxing the message
-                match (Box::new(message) as Box<dyn Any>).downcast::<MsgT>() {
-                    Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
-                    Err(_) => Result::Err(MessageNotSupported()),
-                }
-            }
-        }
-    }
-}
 
 /// A [`Task`] can be queried for completion.
 pub trait Task: Send + Debug {
@@ -112,7 +83,7 @@ where
 {
     fn send(&mut self, message: MsgT, delay: Option<Duration>);
 
-    fn set_handler(&mut self, handler: MsgHandler<MsgT>);
+    fn set_handler(&mut self, handler: DynMsgHandler<MsgT>);
 
     fn spawn_async_send(
         &mut self,
@@ -152,25 +123,28 @@ pub enum P2PNetworkError {
     Join(#[from] Arc<JoinError>),
     #[error("Actor not found")]
     ActorNotFound(Arc<String>),
+    #[error("Message type not supported")]
+    MessageNotSupported,
 }
 
 pub type P2PNetworkResult<R> = Result<R, P2PNetworkError>;
 
 /// A [`P2PNetworkClient`] allows sending messages to other nodes in a P2P network.
-pub trait P2PNetworkClient: Clone {
+pub trait P2PNetworkClient: DynClone {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
-        serializer: &SerializerT,
+        serializer: SerializerT,
         node: impl Into<String>,
     ) -> P2PNetworkResult<()>
     where
         MsgT: ActorMsg,
-        SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync;
+        SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync + 'static;
 }
 
 /// Erased versions
 pub mod erased {
+    use std::any::Any;
     use std::fmt::Debug;
     use std::{pin::Pin, time::Duration};
 
@@ -178,7 +152,7 @@ pub mod erased {
 
     use crate::actor;
 
-    use super::{ActorMsg, AnActorMsg, MsgHandler};
+    use super::{ActorMsg, AnActorMsg, DynMsgHandler, P2PNetworkResult};
 
     pub type DynFuture<MsgT> = Pin<Box<dyn Future<Output = MsgT> + Send + 'static>>;
     pub type DynLazy<MsgT> = Box<dyn FnOnce() -> MsgT + Send + 'static>;
@@ -189,7 +163,7 @@ pub mod erased {
     {
         fn send(&mut self, message: MsgT, delay: Option<Duration>);
 
-        fn set_handler(&mut self, handler: MsgHandler<MsgT>);
+        fn set_handler(&mut self, handler: DynMsgHandler<MsgT>);
 
         fn spawn_async_send(&mut self, f: DynFuture<MsgT>, delay: Option<Duration>);
 
@@ -213,7 +187,7 @@ pub mod erased {
             self.send(message, delay);
         }
 
-        fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+        fn set_handler(&mut self, handler: DynMsgHandler<MsgT>) {
             self.set_handler(handler);
         }
 
@@ -234,7 +208,7 @@ pub mod erased {
             ActorRef::send(self, message, delay);
         }
 
-        fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+        fn set_handler(&mut self, handler: DynMsgHandler<MsgT>) {
             ActorRef::set_handler(self, handler);
         }
 
@@ -283,6 +257,72 @@ pub mod erased {
             join_on_drop: bool,
         ) -> DynActorRef<AnActorMsg> {
             Box::new(self.create(node_id, name, join_on_drop))
+        }
+    }
+
+    // Sadly, an erased ActorSystemHandle trait dyn cannot implement the non-erased trait
+    //  for 2 reasons:
+    //
+    //  1. The actor type would be DynActorRef<MsgT> but it does not satifsy the ActorRef<MsgT>
+    //     bound and adding a blanket implementation would cause infinite recursion.
+    //  2. We'd need the fully erased trait object to implement the partially erased trait object
+    //     that retains the message type, but such implementation conflicts with the
+    //     implementations for the ActorRef erasure.
+    //
+    // On the other hand, we don't really need to be able to pass a trait object if the app
+    //  code dev has chosen the non-erased variant.
+
+    pub trait P2PNetworkClient: DynClone + Send {
+        fn attempt_send(
+            &mut self,
+            message: AnActorMsg,
+            serializer: Box<dyn Fn(AnActorMsg) -> P2PNetworkResult<Vec<u8>> + Sync>,
+            node: String,
+        ) -> P2PNetworkResult<()>;
+    }
+
+    pub type DynP2PNetworkClient = Box<dyn P2PNetworkClient>;
+
+    impl Clone for DynP2PNetworkClient {
+        fn clone(&self) -> Self {
+            dyn_clone::clone_box(&**self)
+        }
+    }
+
+    impl<P2PNetworkClientT> P2PNetworkClient for P2PNetworkClientT
+    where
+        P2PNetworkClientT: actor::P2PNetworkClient + Send + ?Sized + 'static,
+    {
+        fn attempt_send(
+            &mut self,
+            message: AnActorMsg,
+            serializer: Box<dyn Fn(AnActorMsg) -> P2PNetworkResult<Vec<u8>> + Sync>,
+            node: String,
+        ) -> P2PNetworkResult<()> {
+            self.attempt_send(message, serializer, node)
+        }
+    }
+
+    impl actor::P2PNetworkClient for dyn P2PNetworkClient {
+        fn attempt_send<MsgT, SerializerT>(
+            &mut self,
+            message: MsgT,
+            serializer: SerializerT,
+            node: impl Into<String>,
+        ) -> P2PNetworkResult<()>
+        where
+            MsgT: ActorMsg,
+            SerializerT: Fn(MsgT) -> P2PNetworkResult<Vec<u8>> + Sync + 'static,
+        {
+            P2PNetworkClient::attempt_send(
+                self,
+                Box::new(message),
+                Box::new(move |msg| match (msg as Box<dyn Any>).downcast::<MsgT>() {
+                    Ok(typed_msg) => serializer(*typed_msg),
+                    Err(_) => Err(actor::P2PNetworkError::MessageNotSupported),
+                }),
+                node.into(),
+            )
         }
     }
 }

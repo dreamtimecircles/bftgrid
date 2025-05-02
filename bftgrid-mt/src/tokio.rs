@@ -8,7 +8,7 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, MsgHandler, P2PNetworkClient,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, DynMsgHandler, Joinable, P2PNetworkClient,
     P2PNetworkError, P2PNetworkResult, Task, UntypedMsgHandler,
 };
 use futures::future;
@@ -30,7 +30,7 @@ where
     MsgT: ActorMsg,
 {
     tx: TUnboundedSender<MsgT>,
-    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<MsgHandler<MsgT>>>>,
+    handler_tx: TUnboundedSender<Arc<tokio::sync::Mutex<DynMsgHandler<MsgT>>>>,
     close_cond: Arc<(std::sync::Mutex<bool>, Condvar)>,
     name: Arc<String>,
 }
@@ -160,7 +160,7 @@ where
         });
     }
 
-    fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+    fn set_handler(&mut self, handler: DynMsgHandler<MsgT>) {
         self.actor
             .data
             .handler_tx
@@ -234,7 +234,7 @@ impl TokioActorSystem {
     {
         let (tx, mut rx) = tmpsc::unbounded_channel();
         let (handler_tx, mut handler_rx) =
-            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<MsgHandler<MsgT>>>>();
+            tmpsc::unbounded_channel::<Arc<tokio::sync::Mutex<DynMsgHandler<MsgT>>>>();
         let close_cond = Arc::new((std::sync::Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         let actor_name = Arc::new(name.into());
@@ -534,7 +534,7 @@ impl P2PNetworkClient for TokioP2PNetworkClient {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
-        serializer: &SerializerT,
+        serializer: SerializerT,
         node_addr: impl Into<String>,
     ) -> P2PNetworkResult<()>
     where
@@ -549,7 +549,7 @@ fn attempt_send_internal<MsgT, SerializerT>(
     runtime: &AsyncRuntime,
     sockets: &HashMap<String, P2PNetworkResult<Arc<tokio::net::UdpSocket>>>,
     message: MsgT,
-    serializer: &SerializerT,
+    serializer: SerializerT,
     node_addr: impl Into<String>,
 ) -> P2PNetworkResult<()>
 where
