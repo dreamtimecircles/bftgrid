@@ -90,11 +90,23 @@ impl PartialOrd for SimulationEventAtInstant {
     }
 }
 
-#[derive(Debug)]
 pub struct NodeDescriptor {
     pub client_request_handler: Option<Arc<String>>,
     pub p2p_request_handler: Option<Arc<String>>,
     pub all_handlers: HashMap<Arc<String>, Arc<Mutex<Option<UntypedHandlerBox>>>>,
+}
+
+impl std::fmt::Debug for NodeDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeDescriptor")
+            .field("client_request_handler", &self.client_request_handler)
+            .field("p2p_request_handler", &self.p2p_request_handler)
+            .field(
+                "all_handlers",
+                &self.all_handlers.keys().collect::<Vec<_>>(),
+            )
+            .finish()
+    }
 }
 
 impl NodeDescriptor {

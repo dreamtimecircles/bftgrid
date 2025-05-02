@@ -94,7 +94,7 @@ where
 impl<ActorSystemT, Actor1RefT, Actor2RefT> TypedMsgHandler<Ping>
     for Actor1<ActorSystemT, Actor1RefT, Actor2RefT>
 where
-    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    ActorSystemT: ActorSystemHandle + std::fmt::Debug + Clone + Send + 'static,
     Actor1RefT: ActorRef<Ping> + Clone + 'static,
     Actor2RefT: ActorRef<Actor1ToActor2<Actor1RefT>> + Clone + 'static,
 {
@@ -190,7 +190,7 @@ fn build_system<Actor1ActorSystemT, Actor2ActorSystemT>(
     actor2_actor_system: Actor2ActorSystemT,
 ) -> System<Actor1ActorSystemT, Actor2ActorSystemT>
 where
-    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Send + 'static,
+    Actor1ActorSystemT: ActorSystemHandle + std::fmt::Debug + Clone + Send + 'static,
     Actor2ActorSystemT: ActorSystemHandle + 'static,
     Actor1ActorSystemT::ActorRefT<Ping>: Clone,
     Actor2ActorSystemT::ActorRefT<Actor1ToActor2<Actor1ActorSystemT::ActorRefT<Ping>>>: Clone,

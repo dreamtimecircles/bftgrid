@@ -28,7 +28,7 @@ pub enum ActorControl {
 
 /// A [`TypedMsgHandler`] is an actor behavior that can handle messages of a specific type
 /// and optionally return an [`ActorControl`] message.
-pub trait TypedMsgHandler<MsgT>: Send + Debug
+pub trait TypedMsgHandler<MsgT>: Send
 where
     MsgT: ActorMsg,
 {
@@ -54,7 +54,7 @@ impl ActorMsg for AnActorMsg {}
 
 /// An [`UntypedMsgHandler`] is an actor handler that can receive messages of any type,
 ///  although it may refuse to handle some of them.
-pub trait UntypedMsgHandler: Send + Debug {
+pub trait UntypedMsgHandler: Send {
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
@@ -79,9 +79,15 @@ where
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match (message as Box<dyn Any>).downcast::<MsgT>() {
+        match (message.clone() as Box<dyn Any>).downcast::<MsgT>() {
             Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
-            Err(_) => Result::Err(MessageNotSupported()),
+            Err(_) => {
+                // MsgT may be a trait object, so we retry after boxing the message
+                match (Box::new(message) as Box<dyn Any>).downcast::<MsgT>() {
+                    Ok(typed_message) => Result::Ok(self.receive(*typed_message)),
+                    Err(_) => Result::Err(MessageNotSupported()),
+                }
+            }
         }
     }
 }
@@ -123,7 +129,7 @@ where
 
 /// An [`ActorSystemHandle`] allows spawning actors by creating an [`ActorRef`] and it can be cloned.
 /// Actors themselves can use [`ActorSystemHandle`]s to spawn new actors.
-pub trait ActorSystemHandle: Clone + Send {
+pub trait ActorSystemHandle: DynClone + Send {
     type ActorRefT<MsgT>: ActorRef<MsgT>
     where
         MsgT: ActorMsg;
@@ -172,7 +178,7 @@ pub mod erased {
 
     use crate::actor;
 
-    use super::{ActorMsg, MsgHandler};
+    use super::{ActorMsg, AnActorMsg, MsgHandler};
 
     pub type DynFuture<MsgT> = Pin<Box<dyn Future<Output = MsgT> + Send + 'static>>;
     pub type DynLazy<MsgT> = Box<dyn FnOnce() -> MsgT + Send + 'static>;
@@ -246,6 +252,37 @@ pub mod erased {
             delay: Option<Duration>,
         ) {
             ActorRef::spawn_thread_blocking_send(self, Box::new(f), delay);
+        }
+    }
+
+    pub trait ActorSystemHandle: DynClone + Send {
+        fn create(
+            &self,
+            node_id: String,
+            name: String,
+            join_on_drop: bool,
+        ) -> DynActorRef<AnActorMsg>;
+    }
+
+    pub type DynActorSystemHandle = Box<dyn ActorSystemHandle>;
+
+    impl Clone for DynActorSystemHandle {
+        fn clone(&self) -> Self {
+            dyn_clone::clone_box(&**self)
+        }
+    }
+
+    impl<ActorSystemHandleT> ActorSystemHandle for ActorSystemHandleT
+    where
+        ActorSystemHandleT: actor::ActorSystemHandle + ?Sized + 'static,
+    {
+        fn create(
+            &self,
+            node_id: String,
+            name: String,
+            join_on_drop: bool,
+        ) -> DynActorRef<AnActorMsg> {
+            Box::new(self.create(node_id, name, join_on_drop))
         }
     }
 }

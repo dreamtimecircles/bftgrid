@@ -3,8 +3,9 @@ mod utils;
 use std::any::Any;
 
 use bftgrid_core::actor::{
-    erased::DynActorRef, ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, Joinable,
-    MessageNotSupported, P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
+    erased::{DynActorRef, DynActorSystemHandle},
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, Joinable, MessageNotSupported,
+    P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
 };
 
 use bftgrid_mt::{
@@ -18,31 +19,28 @@ use tokio::net::UdpSocket;
 struct Ping();
 impl ActorMsg for Ping {}
 
-#[derive(Debug)]
-struct Actor1<ActorSystemT, P2PNetworkT>
+struct Actor1<P2PNetworkT>
 where
-    ActorSystemT: ActorSystemHandle + 'static,
     P2PNetworkT: P2PNetworkClient,
 {
-    self_ref: DynActorRef<Ping>,
+    self_ref: DynActorRef<AnActorMsg>,
     node_id: String,
-    actor_system: ActorSystemT,
+    actor_system: DynActorSystemHandle,
     network_out: P2PNetworkT,
     ping_count: u8,
     spawn_count: u8,
 }
 
-impl<ActorSystemT, P2PNetworkT> Actor1<ActorSystemT, P2PNetworkT>
+impl<P2PNetworkT> Actor1<P2PNetworkT>
 where
-    ActorSystemT: ActorSystemHandle,
     P2PNetworkT: P2PNetworkClient,
 {
     fn new(
-        self_ref: DynActorRef<Ping>,
+        self_ref: DynActorRef<AnActorMsg>,
         node_id: impl Into<String>,
-        actor_system: ActorSystemT,
+        actor_system: DynActorSystemHandle,
         network_out: P2PNetworkT,
-    ) -> Actor1<ActorSystemT, P2PNetworkT> {
+    ) -> Actor1<P2PNetworkT> {
         Actor1 {
             self_ref,
             node_id: node_id.into(),
@@ -54,12 +52,15 @@ where
     }
 }
 
-impl<ActorSystemT, P2PNetworkT> TypedMsgHandler<Ping> for Actor1<ActorSystemT, P2PNetworkT>
+impl<P2PNetworkT> TypedMsgHandler<AnActorMsg> for Actor1<P2PNetworkT>
 where
-    ActorSystemT: ActorSystemHandle + Send + std::fmt::Debug + 'static,
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
 {
-    fn receive(&mut self, _msg: Ping) -> Option<ActorControl> {
+    fn receive(&mut self, msg: AnActorMsg) -> Option<ActorControl> {
+        if (msg as Box<dyn Any>).downcast::<Ping>().is_ok() {
+        } else {
+            panic!("Not a Ping")
+        }
         let ret = match self.ping_count {
             0 => {
                 log::info!("Actor1 received first ping, sending ping to Actor2 over the network");
@@ -73,7 +74,7 @@ where
                 self.self_ref.spawn_async_send(
                     Box::pin(async {
                         log::info!("Actor1 doing async work");
-                        Ping()
+                        Box::new(Ping()) as AnActorMsg
                     }),
                     None,
                 );
@@ -83,7 +84,7 @@ where
                 log::info!("Actor1 received third ping");
                 if self.spawn_count < 1 {
                     log::info!("Actor1 spawning");
-                    let mut new_ref = self.actor_system.create::<Ping>(
+                    let mut new_ref = self.actor_system.create(
                         self.node_id.clone(),
                         self.spawn_count.to_string(),
                         false,
@@ -98,7 +99,7 @@ where
                         spawn_count: self.spawn_count + 1,
                     }));
                     log::info!("Actor1 sending to spawned actor");
-                    new_ref.send(Ping(), None);
+                    new_ref.send(Box::new(Ping()), None);
                     log::info!("Actor1 done");
                 }
                 log::info!("Actor1 exiting");
@@ -127,11 +128,15 @@ where
     }
 }
 
-impl<P2PNetworkT> TypedMsgHandler<Ping> for Actor2<P2PNetworkT>
+impl<P2PNetworkT> TypedMsgHandler<AnActorMsg> for Actor2<P2PNetworkT>
 where
     P2PNetworkT: P2PNetworkClient + Send + std::fmt::Debug + 'static,
 {
-    fn receive(&mut self, msg: Ping) -> Option<ActorControl> {
+    fn receive(&mut self, msg: AnActorMsg) -> Option<ActorControl> {
+        if (msg.clone() as Box<dyn Any>).downcast::<Ping>().is_ok() {
+        } else {
+            panic!("Not a Ping")
+        }
         log::info!("Actor2 received ping over the network, replying with a ping over the network");
         let mut out = self.network_out.clone();
         let _ = out.attempt_send(msg, &|_msg| Ok(Vec::new()), "localhost:5001");
@@ -143,26 +148,21 @@ where
 #[derive(Debug)]
 struct NodeP2PNetworkInputHandler<ActorRefT>
 where
-    ActorRefT: ActorRef<Ping>,
+    ActorRefT: ActorRef<AnActorMsg>,
 {
     actor_ref: ActorRefT,
 }
 
 impl<ActorRefT> UntypedMsgHandler for NodeP2PNetworkInputHandler<ActorRefT>
 where
-    ActorRefT: ActorRef<Ping>,
+    ActorRefT: ActorRef<AnActorMsg>,
 {
     fn receive_untyped(
         &mut self,
         message: AnActorMsg,
     ) -> Result<Option<ActorControl>, MessageNotSupported> {
-        match (message as Box<dyn Any>).downcast::<Ping>() {
-            Ok(typed_message) => {
-                self.actor_ref.send(*typed_message, None);
-                Result::Ok(None)
-            }
-            Err(_) => Result::Err(MessageNotSupported()),
-        }
+        self.actor_ref.send(message, None);
+        Result::Ok(None)
     }
 }
 
@@ -177,16 +177,17 @@ async fn main() {
     let mut tokio_actor_system = TokioActorSystemHandle::new_actor_system("tokio-as", None, false);
     let mut thread_actor_system =
         ThreadActorSystemHandle::new_actor_system("thread-as", None, false);
-    let mut actor1_ref: bftgrid_mt::tokio::TokioActorRef<Ping> =
+    let mut actor1_ref: bftgrid_mt::tokio::TokioActorRef<AnActorMsg> =
         tokio_actor_system.create("node1", "actor1", false);
     let actor1_ref_copy = actor1_ref.clone();
     actor1_ref.set_handler(Box::new(Actor1::new(
         Box::new(actor1_ref_copy),
         "node1",
-        tokio_actor_system.clone(),
+        Box::new(tokio_actor_system.clone()),
         network1.clone(),
     )));
-    let mut actor2_ref = thread_actor_system.create("node2", "actor2", false);
+    let mut actor2_ref: bftgrid_mt::thread::ThreadActorRef<AnActorMsg> =
+        thread_actor_system.create("node2", "actor2", false);
     actor2_ref.set_handler(Box::new(Actor2::new(network2.clone())));
     let node1 = TokioP2PNetworkServer::new(
         "node1",
@@ -224,7 +225,7 @@ async fn main() {
             .unwrap(),
     );
     log::info!("Started node2");
-    actor1_ref.send(Ping(), None);
+    actor1_ref.send(Box::new(Ping()), None);
     log::info!("Sent startup ping to actor1; joining actors, actor systems and exiting");
     actor2_ref.join();
     log::info!("Joined Actor2");
@@ -269,12 +270,12 @@ mod tests {
         actor1_ref.set_handler(Box::new(Actor1::new(
             Box::new(actor1_ref_copy),
             "localhost:5001",
-            simulation.clone(),
+            Box::new(simulation.clone()),
             simulation.clone(),
         )));
         let mut actor2_ref = simulation.create("localhost:5002", "actor2", false);
         actor2_ref.set_handler(Box::new(Actor2::new(simulation.clone())));
-        actor1_ref.send(Ping(), None);
+        actor1_ref.send(Box::new(Ping()), None);
         let history = simulation.run();
         log::info!("{:?}", history);
     }
