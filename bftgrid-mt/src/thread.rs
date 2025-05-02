@@ -15,7 +15,7 @@ use crate::{
     ThreadJoinable, TokioTask,
 };
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, Joinable, MsgHandler, Task,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, DynMsgHandler, Joinable, Task,
 };
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle as TokioJoinHandle;
@@ -26,7 +26,7 @@ where
     MsgT: ActorMsg,
 {
     tx: Sender<MsgT>,
-    handler_tx: Sender<Arc<Mutex<MsgHandler<MsgT>>>>,
+    handler_tx: Sender<Arc<Mutex<DynMsgHandler<MsgT>>>>,
     close_cond: Arc<(Mutex<bool>, Condvar)>,
     name: Arc<String>,
 }
@@ -134,7 +134,7 @@ where
         }
     }
 
-    fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+    fn set_handler(&mut self, handler: DynMsgHandler<MsgT>) {
         self.actor
             .data
             .handler_tx
@@ -213,7 +213,7 @@ impl ThreadActorSystem {
         MsgT: ActorMsg,
     {
         let (tx, rx) = mpsc::channel();
-        let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<MsgHandler<MsgT>>>>();
+        let (handler_tx, handler_rx) = mpsc::channel::<Arc<Mutex<DynMsgHandler<MsgT>>>>();
         let close_cond = Arc::new((Mutex::new(false), Condvar::new()));
         let close_cond2 = close_cond.clone();
         let actor_name = Arc::new(name.into());

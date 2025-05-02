@@ -1,6 +1,7 @@
 //! Single-threaded simulation of a network of actors.
 
 use std::{
+    any::Any,
     collections::{BinaryHeap, HashMap},
     fmt::Debug,
     future::Future,
@@ -12,13 +13,48 @@ use std::{
 };
 
 use bftgrid_core::actor::{
-    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, MsgHandler, P2PNetworkClient,
-    P2PNetworkResult, UntypedHandlerBox,
+    ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, DynMsgHandler,
+    MessageNotSupported, P2PNetworkClient, P2PNetworkResult, UntypedMsgHandler,
 };
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
 };
+
+pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
+
+struct SimulationMsgHandler<MsgT> {
+    handler: DynMsgHandler<MsgT>,
+}
+
+/// A blanket [`UntypedMsgHandler`] implementation for any [`MsgHandler<MsgT>`]
+///  to allow any boxed typed actor to be used as a network input actor.
+// The manual supertrait upcasting approach
+//  (https://quinedot.github.io/rust-learning/dyn-trait-combining.html#manual-supertrait-upcasting)
+//  would not work in this case due to the `MsgT` type parameter being
+//  method-bound rather than trait-bound in a blanket implementation for `T: TypedMsgHandler<MsgT>`.
+//  Somewhat sadly, this means that a generic [`UntypedMsgHandler`] must be costructed via a second level
+//  of boxing (`Box<dyn UntypedMsgHandler>`).
+impl<MsgT> UntypedMsgHandler for SimulationMsgHandler<MsgT>
+where
+    MsgT: ActorMsg,
+{
+    fn receive_untyped(
+        &mut self,
+        message: AnActorMsg,
+    ) -> Result<Option<ActorControl>, MessageNotSupported> {
+        match (message.clone() as Box<dyn Any>).downcast::<MsgT>() {
+            Ok(typed_message) => Result::Ok(self.handler.receive(*typed_message)),
+            Err(_) => {
+                // MsgT may be a trait object, so we retry after boxing the message
+                match (Box::new(message) as Box<dyn Any>).downcast::<MsgT>() {
+                    Ok(typed_message) => Result::Ok(self.handler.receive(*typed_message)),
+                    Err(_) => Result::Err(MessageNotSupported()),
+                }
+            }
+        }
+    }
+}
 
 const SEED: u64 = 10;
 const MAX_RANDOM_DURATION: Duration = Duration::from_secs(1);
@@ -175,13 +211,13 @@ where
         });
     }
 
-    fn set_handler(&mut self, handler: MsgHandler<MsgT>) {
+    fn set_handler(&mut self, handler: DynMsgHandler<MsgT>) {
         let actor = self.actor.lock().unwrap();
         let mut topology = actor.topology.lock().unwrap();
         let node = topology.get_mut(actor.node_id.as_ref()).unwrap();
         node.all_handlers.insert(
             actor.name.clone(),
-            Arc::new(Mutex::new(Some(Box::new(handler)))),
+            Arc::new(Mutex::new(Some(Box::new(SimulationMsgHandler { handler })))),
         );
     }
 
@@ -576,7 +612,7 @@ impl P2PNetworkClient for Simulation {
     fn attempt_send<MsgT, SerializerT>(
         &mut self,
         message: MsgT,
-        _serializer: &SerializerT,
+        _serializer: SerializerT,
         to_node: impl Into<String>,
     ) -> P2PNetworkResult<()>
     where
