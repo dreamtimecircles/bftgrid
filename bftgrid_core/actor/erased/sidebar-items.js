@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"trait":["ActorRef","ActorSystemHandle"],"type":["DynActorRef","DynActorSystemHandle","DynFuture","DynLazy"]};
+window.SIDEBAR_ITEMS = {"trait":["ActorRef","ActorSystemHandle","P2PNetworkClient"],"type":["DynActorRef","DynActorSystemHandle","DynFuture","DynLazy","DynP2PNetworkClient"]};
