@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"trait":["ActorRef","ActorSystemHandle","P2PNetworkClient"],"type":["DynActorRef","DynActorSystemHandle","DynFuture","DynLazy","DynP2PNetworkClient"]};
+window.SIDEBAR_ITEMS = {"struct":["DynActorRefWrapped"],"trait":["ActorRef","ActorSystemHandle","P2PNetworkClient"],"type":["DynActorRef","DynActorSystemHandle","DynFuture","DynLazy","DynP2PNetworkClient"]};

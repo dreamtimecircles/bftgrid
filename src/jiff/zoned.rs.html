@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/jiff-0.2.11/src/zoned.rs`."><title>zoned.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-20739d33.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="jiff" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (3350c1eb3 2025-05-01)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">jiff/</div>zoned.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-4"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>core::time::Duration <span class="kw">as </span>UnsignedDuration;
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/jiff-0.2.12/src/zoned.rs`."><title>zoned.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-20739d33.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="jiff" data-themes="" data-resource-suffix="" data-rustdoc-version="1.88.0-nightly (13e879094 2025-05-04)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-63605ae7.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7ef8a74a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">jiff/</div>zoned.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-4"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>core::time::Duration <span class="kw">as </span>UnsignedDuration;
 <a href=#2 id=2 data-nosnippet>2</a>
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use crate</span>::{
 <a href=#4 id=4 data-nosnippet>4</a>    civil::{
@@ -5760,4 +5760,41 @@
 <a href=#5760 id=5760 data-nosnippet>5760</a>            @<span class="string">"increment 2 for rounding datetime to days must be 1) less than 2, 2) divide into it evenly and 3) greater than zero"
 <a href=#5761 id=5761 data-nosnippet>5761</a>        </span>);
 <a href=#5762 id=5762 data-nosnippet>5762</a>    }
-<a href=#5763 id=5763 data-nosnippet>5763</a>}</code></pre></div></section></main></body></html>
+<a href=#5763 id=5763 data-nosnippet>5763</a>
+<a href=#5764 id=5764 data-nosnippet>5764</a>    <span class="comment">// This tests that if we get a time zone offset with an explicit second
+<a href=#5765 id=5765 data-nosnippet>5765</a>    // component, then it must *exactly* match the correct offset for that
+<a href=#5766 id=5766 data-nosnippet>5766</a>    // civil time.
+<a href=#5767 id=5767 data-nosnippet>5767</a>    //
+<a href=#5768 id=5768 data-nosnippet>5768</a>    // See: https://github.com/tc39/proposal-temporal/issues/3099
+<a href=#5769 id=5769 data-nosnippet>5769</a>    // See: https://github.com/tc39/proposal-temporal/pull/3107
+<a href=#5770 id=5770 data-nosnippet>5770</a>    </span><span class="attr">#[test]
+<a href=#5771 id=5771 data-nosnippet>5771</a>    </span><span class="kw">fn </span>time_zone_offset_seconds_exact_match() {
+<a href=#5772 id=5772 data-nosnippet>5772</a>        <span class="kw">if </span><span class="kw">crate</span>::tz::db().is_definitively_empty() {
+<a href=#5773 id=5773 data-nosnippet>5773</a>            <span class="kw">return</span>;
+<a href=#5774 id=5774 data-nosnippet>5774</a>        }
+<a href=#5775 id=5775 data-nosnippet>5775</a>
+<a href=#5776 id=5776 data-nosnippet>5776</a>        <span class="kw">let </span>zdt: Zoned =
+<a href=#5777 id=5777 data-nosnippet>5777</a>            <span class="string">"1970-06-01T00:00:00-00:45[Africa/Monrovia]"</span>.parse().unwrap();
+<a href=#5778 id=5778 data-nosnippet>5778</a>        <span class="macro">assert_eq!</span>(
+<a href=#5779 id=5779 data-nosnippet>5779</a>            zdt.to_string(),
+<a href=#5780 id=5780 data-nosnippet>5780</a>            <span class="string">"1970-06-01T00:00:00-00:45[Africa/Monrovia]"
+<a href=#5781 id=5781 data-nosnippet>5781</a>        </span>);
+<a href=#5782 id=5782 data-nosnippet>5782</a>
+<a href=#5783 id=5783 data-nosnippet>5783</a>        <span class="kw">let </span>zdt: Zoned =
+<a href=#5784 id=5784 data-nosnippet>5784</a>            <span class="string">"1970-06-01T00:00:00-00:44:30[Africa/Monrovia]"</span>.parse().unwrap();
+<a href=#5785 id=5785 data-nosnippet>5785</a>        <span class="macro">assert_eq!</span>(
+<a href=#5786 id=5786 data-nosnippet>5786</a>            zdt.to_string(),
+<a href=#5787 id=5787 data-nosnippet>5787</a>            <span class="string">"1970-06-01T00:00:00-00:45[Africa/Monrovia]"
+<a href=#5788 id=5788 data-nosnippet>5788</a>        </span>);
+<a href=#5789 id=5789 data-nosnippet>5789</a>
+<a href=#5790 id=5790 data-nosnippet>5790</a>        <span class="macro">insta::assert_snapshot!</span>(
+<a href=#5791 id=5791 data-nosnippet>5791</a>            <span class="string">"1970-06-01T00:00:00-00:44:40[Africa/Monrovia]"</span>.parse::&lt;Zoned&gt;().unwrap_err(),
+<a href=#5792 id=5792 data-nosnippet>5792</a>            @<span class="string">r#"parsing "1970-06-01T00:00:00-00:44:40[Africa/Monrovia]" failed: datetime 1970-06-01T00:00:00 could not resolve to a timestamp since 'reject' conflict resolution was chosen, and because datetime has offset -00:44:40, but the time zone Africa/Monrovia for the given datetime unambiguously has offset -00:44:30"#</span>,
+<a href=#5793 id=5793 data-nosnippet>5793</a>        );
+<a href=#5794 id=5794 data-nosnippet>5794</a>
+<a href=#5795 id=5795 data-nosnippet>5795</a>        <span class="macro">insta::assert_snapshot!</span>(
+<a href=#5796 id=5796 data-nosnippet>5796</a>            <span class="string">"1970-06-01T00:00:00-00:45:00[Africa/Monrovia]"</span>.parse::&lt;Zoned&gt;().unwrap_err(),
+<a href=#5797 id=5797 data-nosnippet>5797</a>            @<span class="string">r#"parsing "1970-06-01T00:00:00-00:45:00[Africa/Monrovia]" failed: datetime 1970-06-01T00:00:00 could not resolve to a timestamp since 'reject' conflict resolution was chosen, and because datetime has offset -00:45, but the time zone Africa/Monrovia for the given datetime unambiguously has offset -00:44:30"#</span>,
+<a href=#5798 id=5798 data-nosnippet>5798</a>        );
+<a href=#5799 id=5799 data-nosnippet>5799</a>    }
+<a href=#5800 id=5800 data-nosnippet>5800</a>}</code></pre></div></section></main></body></html>
