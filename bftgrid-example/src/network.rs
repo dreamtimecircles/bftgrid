@@ -161,9 +161,10 @@ where
     }
 }
 
-// Components that need a Tokio runtime will reuse the handle from the async context, if any,
-//  otherwise they will use an owned runtime.
-fn main() {
+// Components that need a Tokio runtime will reuse the one from the async context, if any,
+//  otherwise they will create a new one.
+#[tokio::main]
+async fn main() {
     utils::setup_logging(false);
     let async_runtime = AsyncRuntime::new("main", None);
     let network1 = TokioP2PNetworkClient::new("network1", vec!["localhost:5002"], None);

@@ -146,13 +146,14 @@ pub trait P2PNetworkClient: DynClone {
 pub mod erased {
     use std::any::Any;
     use std::fmt::Debug;
+    use std::marker::PhantomData;
     use std::{pin::Pin, time::Duration};
 
     use dyn_clone::DynClone;
 
     use crate::actor;
 
-    use super::{ActorMsg, AnActorMsg, DynMsgHandler, P2PNetworkResult};
+    use super::{ActorMsg, AnActorMsg, DynMsgHandler, P2PNetworkResult, TypedMsgHandler};
 
     pub type DynFuture<MsgT> = Pin<Box<dyn Future<Output = MsgT> + Send + 'static>>;
     pub type DynLazy<MsgT> = Box<dyn FnOnce() -> MsgT + Send + 'static>;
@@ -260,17 +261,109 @@ pub mod erased {
         }
     }
 
-    // Sadly, an erased ActorSystemHandle trait dyn cannot implement the non-erased trait
-    //  for 2 reasons:
-    //
-    //  1. The actor type would be DynActorRef<MsgT> but it does not satifsy the ActorRef<MsgT>
-    //     bound and adding a blanket implementation would cause infinite recursion.
-    //  2. We'd need the fully erased trait object to implement the partially erased trait object
-    //     that retains the message type, but such implementation conflicts with the
-    //     implementations for the ActorRef erasure.
-    //
-    // On the other hand, we don't really need to be able to pass a trait object if the app
-    //  code dev has chosen the non-erased variant.
+    #[derive(Debug)]
+    pub struct DynActorRefWrapped<MsgT>
+    where
+        MsgT: ActorMsg,
+    {
+        an_actor_ref: DynActorRef<AnActorMsg>,
+        _p: PhantomData<MsgT>,
+    }
+
+    impl<MsgT> Clone for DynActorRefWrapped<MsgT>
+    where
+        MsgT: ActorMsg,
+    {
+        fn clone(&self) -> Self {
+            DynActorRefWrapped {
+                an_actor_ref: self.an_actor_ref.clone(),
+                _p: PhantomData {},
+            }
+        }
+    }
+
+    struct DowncastingMsgHandler<MsgT>
+    where
+        MsgT: ActorMsg,
+    {
+        dyn_msg_handler: DynMsgHandler<MsgT>,
+    }
+
+    impl<MsgT> TypedMsgHandler<AnActorMsg> for DowncastingMsgHandler<MsgT>
+    where
+        MsgT: ActorMsg,
+    {
+        fn receive(&mut self, message: AnActorMsg) -> Option<actor::ActorControl> {
+            match (message as Box<dyn Any>).downcast::<MsgT>() {
+                Ok(m) => self.dyn_msg_handler.receive(*m),
+                Err(_) => None,
+            }
+        }
+    }
+
+    impl<MsgT> actor::ActorRef<MsgT> for DynActorRefWrapped<MsgT>
+    where
+        MsgT: ActorMsg,
+    {
+        fn send(&mut self, message: MsgT, delay: Option<Duration>) {
+            self.an_actor_ref
+                .send(Box::new(message) as Box<dyn ActorMsg>, delay);
+        }
+
+        fn set_handler(&mut self, handler: DynMsgHandler<MsgT>) {
+            self.an_actor_ref
+                .set_handler(Box::new(DowncastingMsgHandler::<MsgT> {
+                    dyn_msg_handler: handler,
+                }));
+        }
+
+        fn spawn_async_send(
+            &mut self,
+            f: impl Future<Output = MsgT> + Send + 'static,
+            delay: Option<Duration>,
+        ) {
+            self.an_actor_ref.spawn_async_send(
+                Box::pin(async move { Box::new(f.await) as Box<dyn ActorMsg> }),
+                delay,
+            );
+        }
+
+        fn spawn_thread_blocking_send(
+            &mut self,
+            f: impl FnOnce() -> MsgT + Send + 'static,
+            delay: Option<Duration>,
+        ) {
+            self.an_actor_ref
+                .spawn_thread_blocking_send(Box::new(|| Box::new(f())), delay);
+        }
+    }
+
+    impl actor::ActorSystemHandle for dyn ActorSystemHandle {
+        type ActorRefT<MsgT>
+            = DynActorRefWrapped<MsgT>
+        where
+            MsgT: ActorMsg;
+
+        fn create<MsgT>(
+            &self,
+            node_id: impl Into<String>,
+            name: impl Into<String>,
+            join_on_drop: bool,
+        ) -> Self::ActorRefT<MsgT>
+        where
+            MsgT: ActorMsg,
+        {
+            DynActorRefWrapped {
+                an_actor_ref: ActorSystemHandle::create(
+                    self,
+                    node_id.into(),
+                    name.into(),
+                    join_on_drop,
+                ),
+                _p: PhantomData {},
+            }
+        }
+    }
 
     pub trait P2PNetworkClient: DynClone + Send {
         fn attempt_send(
