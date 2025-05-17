@@ -17,8 +17,8 @@ use bftgrid_core::actor::{
     MessageNotSupported, P2PNetworkClient, P2PNetworkResult, UntypedMsgHandler,
 };
 use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
+    rand_core::{RngCore, SeedableRng},
 };
 
 pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
@@ -377,13 +377,7 @@ impl Simulation {
                     });
             }
             None => {
-                if self
-                    .exited_actors
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|elem| *elem == handler)
-                {
+                if self.exited_actors.lock().unwrap().contains(&handler) {
                     panic!("message sent to actor that has exited")
                 }
                 let mut topology = self.topology.lock().unwrap();

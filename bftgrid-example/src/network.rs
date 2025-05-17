@@ -3,15 +3,15 @@ mod utils;
 use std::any::Any;
 
 use bftgrid_core::actor::{
-    erased::{DynActorRef, DynActorSystemHandle, DynP2PNetworkClient},
     ActorControl, ActorMsg, ActorRef, ActorSystemHandle, AnActorMsg, Joinable, MessageNotSupported,
     P2PNetworkClient, TypedMsgHandler, UntypedMsgHandler,
+    erased::{DynActorRef, DynActorSystemHandle, DynP2PNetworkClient},
 };
 
 use bftgrid_mt::{
+    AsyncRuntime,
     thread::ThreadActorSystemHandle,
     tokio::{TokioActorSystemHandle, TokioP2PNetworkClient, TokioP2PNetworkServer},
-    AsyncRuntime,
 };
 use tokio::net::UdpSocket;
 

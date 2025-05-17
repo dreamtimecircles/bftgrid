@@ -1,12 +1,12 @@
 [package]
 name = "bftgrid-mt"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
 bftgrid-core = { path = "../bftgrid-core" }
-tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
+tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 futures = "0.3.31"
 dyn-clone = "1.0.19"
 thiserror = "2.0.12"

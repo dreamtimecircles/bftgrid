@@ -3,16 +3,16 @@ use std::{
     future::Future,
     mem,
     sync::{
-        mpsc::{self, Sender},
         Arc, Condvar, Mutex,
+        mpsc::{self, Sender},
     },
     thread,
     time::Duration,
 };
 
 use crate::{
-    cleanup_complete_tasks, join_tasks, notify_close, push_async_task, AsyncRuntime,
-    ThreadJoinable, TokioTask,
+    AsyncRuntime, ThreadJoinable, TokioTask, cleanup_complete_tasks, join_tasks, notify_close,
+    push_async_task,
 };
 use bftgrid_core::actor::{
     ActorControl, ActorMsg, ActorRef, ActorSystemHandle, DynMsgHandler, Joinable, Task,

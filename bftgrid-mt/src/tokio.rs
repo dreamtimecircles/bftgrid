@@ -20,8 +20,8 @@ use tokio::{
 };
 
 use crate::{
-    join_tasks, notify_close, push_async_task, spawn_async_task, AsyncRuntime, ThreadJoinable,
-    TokioTask,
+    AsyncRuntime, ThreadJoinable, TokioTask, join_tasks, notify_close, push_async_task,
+    spawn_async_task,
 };
 
 #[derive(Debug)]

@@ -244,7 +244,7 @@ mod tests {
     use bftgrid_core::actor::ActorRef;
     use bftgrid_sim::{NodeDescriptor, Simulation};
 
-    use crate::{build_system, utils, Ping, System};
+    use crate::{Ping, System, build_system, utils};
 
     #[test]
     fn simulation() {
