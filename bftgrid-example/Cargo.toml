@@ -5,13 +5,13 @@ edition = "2024"
 authors = ["Fabio Tudone <fabtud@gmail.com>"]
 
 [dependencies]
-dyn-clone = "1.0.19"
-tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
+dyn-clone = "1.0.20"
+tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 bftgrid-core = { path = "../bftgrid-core" }
 bftgrid-mt = { path = "../bftgrid-mt" }
 bftgrid-sim = { path = "../bftgrid-sim" }
-log = "0.4.27"
-env_logger = { version = "0.11" }
+log = "0.4.29"
+env_logger = { version = "0.11.9" }
 
 [[bin]]
 name = "bftgrid-local-example"

@@ -13,6 +13,8 @@ Cargo.lock
 
 .idea/
 
+.direnv/
+
 # Coverage artifacts
 ccov.zip
 lcov.info
