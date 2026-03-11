@@ -377,12 +377,7 @@ impl Simulation {
                     });
             }
             None => {
-                if self
-                    .exited_actors
-                    .lock()
-                    .unwrap()
-                    .contains(&handler)
-                {
+                if self.exited_actors.lock().unwrap().contains(&handler) {
                     panic!("message sent to actor that has exited")
                 }
                 let mut topology = self.topology.lock().unwrap();
