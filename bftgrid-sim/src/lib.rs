@@ -17,8 +17,8 @@ use bftgrid_core::actor::{
     MessageNotSupported, P2PNetworkClient, P2PNetworkResult, UntypedMsgHandler,
 };
 use rand_chacha::{
-    rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
+    rand_core::{RngCore, SeedableRng},
 };
 
 pub type UntypedHandlerBox = Box<dyn UntypedMsgHandler>;
