@@ -381,8 +381,7 @@ impl Simulation {
                     .exited_actors
                     .lock()
                     .unwrap()
-                    .iter()
-                    .any(|elem| *elem == handler)
+                    .contains(&handler)
                 {
                     panic!("message sent to actor that has exited")
                 }
